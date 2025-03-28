@@ -1,0 +1,9 @@
+langgraph
+langchain
+langsmith
+langchain_anthropic
+langchain_openai
+langchain-community
+dotenv
+chromadb
+langgraph-checkpoint-sqlite

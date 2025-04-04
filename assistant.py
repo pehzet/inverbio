@@ -157,51 +157,14 @@ def chat(msg:str, img=None, user_id=None, thread_id=None) -> Tuple[str, str]:
   
     return result["messages"][-1].content, thread_id
 
+
 if __name__ == "__main__":
     thread_id = None
-    with open("test_img.png", "rb") as image_file:
-        image_data = image_file.read()
-    msg = "What is in this image?"
-    result, thread_id = chat(msg, image_data, thread_id=thread_id)
-    print("Assistant: ", result)
-# if __name__ == "__main__":
-#     thread_id = None
-#     while True:
-#         print("Type 'exit' to quit.")
-#         # thread_id = str(12345)
-#         msg = input("User: ")
-#         # msg = "Hi"
-#         if msg.lower() in ["exit", "quit"]:
-#             break
-#         result, thread_id = chat(msg, thread_id=thread_id)
-#         print("Assistant: ", result)
+    while True:
+        print("Type 'exit' to quit.")
+        msg = input("User: ")
+        if msg.lower() in ["exit", "quit"]:
+            break
+        result, thread_id = chat(msg, thread_id=thread_id)
+        print("Assistant: ", result)
 
-
-
-# llm, tools = initalize_llm_and_tools()
-# graph = create_graph()
-
-# config = {"configurable": {"thread_id": "1"}}
-
-# current_state = graph.get_state(config)
-
-
-# while True:
-#     user_input = input("User: ")
-#     if user_input.lower() in ["quit", "exit", "q"]:
-#         print("Goodbye!")
-#         break
-
-#     user_message = [HumanMessage(content=user_input)]
-#     result = graph.invoke({"messages": user_message}, config)
-
-#     last_message = result["messages"][-1]
-
-#     if isinstance(last_message, AIMessage):
-#         print(f"\nAssistant: {last_message.content}\n")
-#     elif isinstance(last_message, list):
-#         for msg in last_message:
-#             if isinstance(msg, AIMessage):
-#                 print(f"\nAssistant: {msg.content}\n")
-#     else:
-#         print(f"\nAssistant returned unexpected message: {last_message}\n")

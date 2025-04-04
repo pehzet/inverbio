@@ -1,7 +1,40 @@
-# InVerBio Virtual Assistant
+## Formo – the LLM-based assistant for Farmely (hehe)
 
-## Based on Langgraph
+### Setup
 
-# Functionalities
-- RAG for Products
-- Image Support
+Create a Python virtual environment (Python > 3.10; tested with 3.12):
+
+```shell
+python -m venv .env
+```
+
+Create an environment variable file (`.env_vars`) with the following content:
+
+```
+LANGSMITH_TRACING=true
+LANGSMITH_ENDPOINT="https://api.smith.langchain.com"
+LANGSMITH_API_KEY="YOUR_KEY_HERE"
+LANGSMITH_PROJECT="YOUR_PROJECT_HERE"
+OPENAI_API_KEY="YOU_GOT_IT: YOUR_KEY_HERE"
+```
+
+Install all requirements:
+
+```shell
+pip install -r requirements.txt
+```
+
+### Test
+
+To test via CLI:
+
+```shell
+python assistant.py
+```
+
+To test via UI app:
+
+```shell
+streamlit run app.py
+```
+

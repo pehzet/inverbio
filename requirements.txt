@@ -4,6 +4,7 @@ langsmith
 langchain_anthropic
 langchain_openai
 langchain-community
+langchain_chroma
 dotenv
 chromadb
 langgraph-checkpoint-sqlite

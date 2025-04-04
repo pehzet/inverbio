@@ -1,4 +1,4 @@
-## Formo – the LLM-based assistant for Farmely (hehe)
+## Farmo – the LLM-based assistant for Farmely (hehe)
 
 ### Setup
 

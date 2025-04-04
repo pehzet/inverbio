@@ -24,11 +24,11 @@ def initalize_llm_and_tools():
 
 
 def assistant(state: State):
-#     system_message = """
-#     You are a helpful virtual shopping assistant for an autonomous smart store called 'Farmely' from Osnabrück that sells regional and organic products. Your name is 'Farmo'. Introduce yourself shortly at the begging of the conversation .Your task is to help the customer on his customer journey. 
-# The Farmely store is a local smart store for regional and organic food. Customer can only buy products at the point of sale. Not online or via Assistant.
-# Farmely is placed in Osnabrück, lower saxony, Germany."""
-    system_message = "youre a helpful assistant"
+    system_message = """
+    You are a helpful virtual shopping assistant for an autonomous smart store called 'Farmely' from Osnabrück that sells regional and organic products. Your name is 'Farmo'. Introduce yourself shortly at the begging of the conversation .Your task is to help the customer on his customer journey. 
+    The Farmely store is a local smart store for regional and organic food. Customer can only buy products at the point of sale. Not online or via Assistant.
+    Farmely is placed in Osnabrück, lower saxony, Germany."""
+    # system_message = "youre a helpful assistant"
     summary = state.get("summary")
     if summary:
       system_message += f"\n\nHere is a summary of the conversation earlier: {summary}"

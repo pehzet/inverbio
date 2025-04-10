@@ -4,15 +4,48 @@ from llm_factory import get_llm
 from rag_factory import get_retriever_tool
 from image_utils import create_msg_with_img
 from langgraph.prebuilt import ToolNode, tools_condition
-from state import State, get_sqlite_checkpoint
+from state import State, get_sqlite_checkpoint, get_value_from_state
 from summary import check_summary, summarize_conversation
 from langgraph.graph import StateGraph, START, END
+from langgraph.graph.state import CompiledStateGraph
 from langchain_core.messages import AIMessage, SystemMessage, HumanMessage, RemoveMessage
+from langchain_core.prompts import PromptTemplate, ChatPromptTemplate
 from utils import render_graph_to_image
 import uuid
 from typing import Tuple
-load_and_check_env()
+from user_db import get_user_from_user_db, add_thread_to_user_db
+from langsmith import Client
+from icecream import ic
+import json
 
+load_and_check_env()
+def get_langsmith_client() -> Client:
+    if "langsmith_client" not in globals():
+        globals()["langsmith_client"] = Client()
+    return globals()["langsmith_client"]
+
+
+def get_prompt_from_langsmith(prompt_identifier:str) -> ChatPromptTemplate:
+    client:Client = get_langsmith_client()
+    prompt:ChatPromptTemplate = client.pull_prompt(prompt_identifier)
+    return prompt
+
+
+
+
+
+def assistant(state: State):
+
+    prompt_identifier = "assistant-system-message"
+    prompt = get_prompt_from_langsmith(prompt_identifier)
+    user_name = get_value_from_state(state, "user_name", "anonym")
+
+    system_message = prompt.format_prompt(user_name = user_name).to_messages()
+    messages = system_message + state["messages"]
+    llm, tools = initalize_llm_and_tools()
+    response = llm.invoke(messages)
+    last_message = messages[-1]
+    return {"messages": [response], "messages_history": [last_message, response]}
 
 def initalize_llm_and_tools():
     llm:ChatOpenAI = get_llm("openai", "gpt-4o-mini")
@@ -20,29 +53,7 @@ def initalize_llm_and_tools():
     tools = [retriever_tool]
     llm = llm.bind_tools(tools)
     return llm, tools
-
-
-
-def assistant(state: State):
-    system_message = """
-    You are a helpful virtual shopping assistant for an autonomous smart store called 'Farmely' from Osnabrück that sells regional and organic products. Your name is 'Farmo'. Introduce yourself shortly at the begging of the conversation .Your task is to help the customer on his customer journey. 
-    The Farmely store is a local smart store for regional and organic food. Customer can only buy products at the point of sale. Not online or via Assistant.
-    Farmely is placed in Osnabrück, lower saxony, Germany."""
-    # system_message = "youre a helpful assistant"
-    summary = state.get("summary")
-    if summary:
-      system_message += f"\n\nHere is a summary of the conversation earlier: {summary}"
-
-    messages = [SystemMessage(content=system_message)] + state["messages"]
-    # llm:ChatOpenAI = get_llm("openai", "gpt-4o-mini")
-    llm, tools = initalize_llm_and_tools()
-    response = llm.invoke(messages)
-
-    last_message = messages[-1]
-
-    return {"messages": [response], "messages_history": [last_message, response]}
-
-def create_graph():
+def create_graph() -> CompiledStateGraph:
     
     # Build Graph
     agent_flow = StateGraph(State)
@@ -68,7 +79,15 @@ def create_graph():
     agent_flow.add_edge("rag", "assistant")
 
     # Summary edges
-    agent_flow.add_conditional_edges("assistant", check_summary)
+    # agent_flow.add_conditional_edges("assistant", check_summary)
+    agent_flow.add_conditional_edges(
+        "assistant",
+        check_summary,
+        {
+            "summarize_conversation": "summarize_conversation",
+            END: END,
+        }
+    )
     # # agent_flow.add_edge("check_summary", "summarize_conversation")
     agent_flow.add_edge("summarize_conversation", END)
 
@@ -76,11 +95,18 @@ def create_graph():
     cp = get_sqlite_checkpoint()
     
     graph = agent_flow.compile(checkpointer=cp)
-    # render_graph_to_image(graph, "graph_4.png")
+    # render_graph_to_image(graph, "graph_with_new_edge.png")
     return graph
 
-def get_graph():
-    if "graph" not in globals():
+def get_graph(force_new=False) -> CompiledStateGraph:
+    '''Get the graph. If it does not exist, create it.
+    Args:
+        force_new (bool): Whether to create a new graph. Defaults to False.
+        
+        Returns:
+        CompiledStateGraph: The graph.'''
+
+    if force_new or "graph" not in globals():
         globals()["graph"] = create_graph()
     graph = globals()["graph"]
     return graph
@@ -121,6 +147,28 @@ def get_messages_by_thread_id(thread_id: str):
 
     return messages_content
 
+def create_graph_input(msg:str, img=None, user_id=None) -> dict:
+    '''Create the input for the graph.
+    Args:
+        msg (str): The message to send to the assistant.
+        img (bytes): The image to send to the assistant. Can be None.
+        user_id (str): The user ID. Can be None.
+        
+        Returns:
+        dict: The input for the graph.'''
+
+    if user_id:
+        user_object = get_user_from_user_db(user_id)
+    else:
+        user_object = {"user_id": "anonym"}
+    
+    if img:
+        msg_object = create_msg_with_img(msg, img)
+    else:
+        msg_object = HumanMessage(content=msg)
+
+    return {"messages": [msg_object], "user" : user_object}
+
 def chat(msg:str, img=None, user_id=None, thread_id=None) -> Tuple[str, str]:
     '''Chat with the assistant.
     Generates a response to the user's message and image.
@@ -138,22 +186,21 @@ def chat(msg:str, img=None, user_id=None, thread_id=None) -> Tuple[str, str]:
         Returns:
         str: The response from the assistant.
         str: The thread ID.'''
-    graph = get_graph()
+    graph: CompiledStateGraph = get_graph()
+    user_id_in_state = get_value_from_state(user_id, "user_id", "anonym")
+    if user_id:
+        if user_id_in_state != user_id:
+            # Fallback to a new graph if user_id does not match
+            # raise ValueError("User ID in state does not match provided user ID.")
+            graph = get_graph(force_new=True)
 
-
-    if img:
-        msg_object = create_msg_with_img(msg, img)
-    else:
-        msg_object = HumanMessage(content=msg)
-
-    if not user_id:
-        user_id = "anonym"
     if not thread_id:
         thread_id = str(user_id) + "-" + str(uuid.uuid4())
-
+        add_thread_to_user_db(thread_id, user_id)
+    graph_input = create_graph_input(msg, img, user_id)
     config = {"configurable": {"thread_id": thread_id}}
 
-    result = graph.invoke({"messages": [msg_object]}, config)
+    result = graph.invoke(graph_input, config)
   
     return result["messages"][-1].content, thread_id
 

@@ -1,0 +1,24 @@
+{
+  "general_information" : {
+    "user_name": "Philipp"
+  },
+    "communication_preferences": {
+      "language": "de",
+      "communication_style": "informell"
+    },
+    "shopping_preferences": {
+      "dietary_restrictions": {
+        "vegan": false,
+        "vegetarian": false,
+        "gluten_free": false,
+        "lactose_free": false,
+        "allergies": []
+      },
+
+      "liked_categories": ["Obst", "Gemüse", "Milchprodukte"],
+      "liked_products": ["Äpfel", "Karotten", "Joghurt"],
+      "disliked_products": ["Brokkoli"],
+      "shopping_frequency": "wöchentlich"
+    }
+  }
+  

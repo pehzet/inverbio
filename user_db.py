@@ -81,6 +81,8 @@ def format_nested_dict(nested_dict: dict) -> Dict:
 
 def get_user_from_user_db(user_id:str, db_path='user_db/user.db') -> Dict:
     """Load user from database"""
+    if user_id in ["anonymous", None]:
+        return {"user_id": "anonymous", "preferences": {}}
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row  # result as dictionary
     cursor = conn.cursor()
@@ -155,7 +157,13 @@ def get_threads_by_user_id(user_id:str) -> List:
     threads_list = [dict(thread) for thread in threads]
     return threads_list
 
-
+def get_thread_ids_by_user_id(user_id:str)-> List:
+    threads_list = get_threads_by_user_id(user_id)
+    if not threads_list:
+        return []
+    # Extrahiere nur die thread_ids
+    thread_ids = [thread.get("thread_id") for thread in threads_list]
+    return thread_ids
 
 if __name__ == "__main__":
     create_tables()

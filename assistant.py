@@ -17,6 +17,7 @@ from user_db import get_user_from_user_db, add_thread_to_user_db
 from langsmith import Client
 from icecream import ic
 import json
+from langgraph.types import StateSnapshot 
 
 load_and_check_env()
 def get_langsmith_client() -> Client:
@@ -38,7 +39,7 @@ def assistant(state: State):
 
     prompt_identifier = "assistant-system-message"
     prompt = get_prompt_from_langsmith(prompt_identifier)
-    user_name = get_value_from_state(state, "user_name", "anonym")
+    user_name = get_value_from_state(state, "user_name", "anonymous")
 
     system_message = prompt.format_prompt(user_name = user_name).to_messages()
     messages = system_message + state["messages"]
@@ -147,7 +148,7 @@ def get_messages_by_thread_id(thread_id: str):
 
     return messages_content
 
-def create_graph_input(msg:str, img=None, user_id=None) -> dict:
+def create_graph_input(user_id:str, msg:str, state:StateSnapshot, img=None) -> dict:
     '''Create the input for the graph.
     Args:
         msg (str): The message to send to the assistant.
@@ -156,12 +157,11 @@ def create_graph_input(msg:str, img=None, user_id=None) -> dict:
         
         Returns:
         dict: The input for the graph.'''
-
-    if user_id:
-        user_object = get_user_from_user_db(user_id)
-    else:
-        user_object = {"user_id": "anonym"}
     
+    user_object = state.values.get("user", {}) 
+    if not user_object:
+        user_object = get_user_from_user_db(user_id)
+
     if img:
         msg_object = create_msg_with_img(msg, img)
     else:
@@ -170,35 +170,20 @@ def create_graph_input(msg:str, img=None, user_id=None) -> dict:
     return {"messages": [msg_object], "user" : user_object}
 
 def chat(msg:str, img=None, user_id=None, thread_id=None) -> Tuple[str, str]:
-    '''Chat with the assistant.
-    Generates a response to the user's message and image.
-    If an image is provided, it will be sent to the assistant.
-    If no image is provided, only the message will be sent.
-    The user ID and thread ID are used to identify the conversation.
-    If no user ID is provided, the conversation will be anonymous.
-    If no thread ID is provided, a new one will be generated.
-    Args:
-        msg (str): The message to send to the assistant.
-        img (bytes): The image to send to the assistant. Can be None.
-        user_id (str): The user ID. Can be None.
-        thread_id (str): The thread ID. Can be None.
-        
-        Returns:
-        str: The response from the assistant.
-        str: The thread ID.'''
-    graph: CompiledStateGraph = get_graph()
-    user_id_in_state = get_value_from_state(user_id, "user_id", "anonym")
-    if user_id:
-        if user_id_in_state != user_id:
-            # Fallback to a new graph if user_id does not match
-            # raise ValueError("User ID in state does not match provided user ID.")
-            graph = get_graph(force_new=True)
 
-    if not thread_id:
+    graph: CompiledStateGraph = get_graph()
+
+    if not user_id:
+        user_id = "anonymous"
+    if not thread_id:  
         thread_id = str(user_id) + "-" + str(uuid.uuid4())
         add_thread_to_user_db(thread_id, user_id)
-    graph_input = create_graph_input(msg, img, user_id)
     config = {"configurable": {"thread_id": thread_id}}
+    state:StateSnapshot = graph.get_state(config)
+ 
+    graph_input = create_graph_input(user_id, msg, state, img)
+    
+    
 
     result = graph.invoke(graph_input, config)
   

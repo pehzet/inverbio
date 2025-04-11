@@ -1,32 +1,62 @@
 import streamlit as st
 from assistant import chat, get_messages_by_thread_id
 import random
-from api import chat_api, get_threads_api
-st.title("Farmo - your assistant at farmely")
-if not "user_id" in st.session_state:
-    st.session_state["user_id"] = None
-if not "thread_id" in st.session_state:
-    st.session_state["thread_id"] = None
+from api import chat_api, get_thread_ids_api
 
-def set_thread_id(thread_id):
-    st.session_state.thread_id = thread_id
+
+st.title("Farmo - your assistant at farmely")
+
+# Initialisiere Session State
+if "user_id" not in st.session_state:
+    st.session_state["user_id"] = None
+if "thread_id" not in st.session_state:
+    st.session_state["thread_id"] = None
+if "selected_thread" not in st.session_state:
+    st.session_state["selected_thread"] = None
+if "input_thread_id" not in st.session_state:
+    st.session_state["input_thread_id"] = ""
+
+# Callback zum Setzen der thread_id
+def update_thread_id():
+    input_id = st.session_state.input_thread_id
+    selected = st.session_state.selected_thread
+    st.session_state.thread_id = input_id if input_id else selected
+
+# Callback zum Setzen der user_id
 def set_user_id(user_id):
     st.session_state.user_id = user_id
 
-user_id = st.text_input("User ID", value=st.session_state.user_id)
+# Eingabe User ID
+user_id = st.text_input("User ID", value=st.session_state.user_id or "")
 if user_id:
     set_user_id(user_id)
+
+# Zeige aktuelle User ID
 if st.session_state.user_id:
-    st.markdown(f"User ID: {st.session_state.user_id}")
-    threads = get_threads_api(user_id=st.session_state.user_id)
-thread_id = st.text_input("Thread ID", value=st.session_state.thread_id)
-if thread_id:
-    set_thread_id(thread_id)
-# if st.session_state.thread_id:
-#     st.markdown(f"Thread ID: {st.session_state.thread_id}")
-# if threads:
-#     st.selectbox("Select a thread", options=threads, index=0, on_change=set_thread_id, args=(thread_id,))
-# st.button("Start new thread", on_click=set_thread_id, args=(None,))
+    st.markdown(f"**User ID:** {st.session_state.user_id}")
+    threads = get_thread_ids_api(user_id=st.session_state.user_id)
+else:
+    threads = []
+
+# Manuelle Eingabe Thread ID
+st.text_input("Enter Thread ID manually (optional)", key="input_thread_id", on_change=update_thread_id)
+
+# Auswahl aus bestehenden Threads
+if threads:
+    st.selectbox("Or select a thread", options=threads, key="selected_thread", on_change=update_thread_id)
+
+
+
+# Button für neuen Thread
+new_thread = st.button("Start new thread")
+if new_thread:
+    st.session_state.thread_id = None
+
+# Zeige aktuelle Thread ID
+if st.session_state.thread_id:
+    st.markdown(f"**Thread ID:** {st.session_state.thread_id}")
+
+
 
 
 def get_messages():
@@ -52,5 +82,5 @@ if prompt := st.chat_input("What is up?"):
     waiting_msg = random.choice(waiting_msgs)
     with st.spinner(waiting_msg):
         response, thread_id = chat_api(prompt, user_id=st.session_state.user_id, thread_id=st.session_state.thread_id)
-        set_thread_id(thread_id)
+        st.session_state.thread_id = thread_id
         st.rerun()

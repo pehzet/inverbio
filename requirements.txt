@@ -8,3 +8,4 @@ langchain_chroma
 dotenv
 chromadb
 langgraph-checkpoint-sqlite
+streamlit

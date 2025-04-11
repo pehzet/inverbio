@@ -1,8 +1,8 @@
 import streamlit as st
 from assistant import chat, get_messages_by_thread_id
 import random
-from api import chat_api, get_thread_ids_api
 
+from user_db import get_thread_ids_by_user_id
 
 st.title("Farmo - your assistant at farmely")
 
@@ -34,7 +34,7 @@ if user_id:
 # Zeige aktuelle User ID
 if st.session_state.user_id:
     st.markdown(f"**User ID:** {st.session_state.user_id}")
-    threads = get_thread_ids_api(user_id=st.session_state.user_id)
+    threads = get_thread_ids_by_user_id(user_id=st.session_state.user_id)
 else:
     threads = []
 
@@ -81,6 +81,6 @@ if prompt := st.chat_input("What is up?"):
     waiting_msgs = ["I look in the basement", "I ask my boss", "I check the fridge", "Computer is thinking... beep boop"] 
     waiting_msg = random.choice(waiting_msgs)
     with st.spinner(waiting_msg):
-        response, thread_id = chat_api(prompt, user_id=st.session_state.user_id, thread_id=st.session_state.thread_id)
+        response, thread_id = chat(prompt, user_id=st.session_state.user_id, thread_id=st.session_state.thread_id)
         st.session_state.thread_id = thread_id
         st.rerun()

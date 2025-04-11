@@ -24,6 +24,8 @@ def create_tables(db_path='user_db/user.db') -> bool:
         create_threads_table = """
         CREATE TABLE IF NOT EXISTS threads (
             thread_id TEXT PRIMARY KEY,
+            title TEXT DEFAULT 'New Thread',
+            description TEXT DEFAULT 'New Thread',
             user_id TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -167,11 +169,11 @@ def get_thread_ids_by_user_id(user_id:str)-> List:
 
 if __name__ == "__main__":
     create_tables()
-    user_id = "00001"
-    import json
-    with open("user_preferences.json", "r", encoding="utf-8") as f:
-        preferences = json.load(f)
-    print(preferences)
-    add_user_to_user_db(user_id, preferences)
-    user = get_user_from_user_db(user_id)
-    print(user)
+    # user_id = "00001"
+    # import json
+    # with open("user_preferences.json", "r", encoding="utf-8") as f:
+    #     preferences = json.load(f)
+    # print(preferences)
+    # add_user_to_user_db(user_id, preferences)
+    # user = get_user_from_user_db(user_id)
+    # print(user)

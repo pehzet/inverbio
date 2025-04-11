@@ -24,6 +24,18 @@ Install all requirements:
 pip install -r requirements.txt
 ```
 
+### Initialize
+
+You have to initalize the databases. Just run the files and it will create the sqlite dbs.
+
+```python
+python rag_factory.py
+```
+```python
+python user_db.py
+```
+
+
 ### Test
 
 To test via CLI:
@@ -38,3 +50,7 @@ To test via UI app:
 streamlit run app.py
 ```
 
+To test via API
+```shell
+python api.py
+```

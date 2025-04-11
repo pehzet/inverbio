@@ -15,7 +15,7 @@ import uuid
 from typing import Tuple
 from user_db import get_user_from_user_db, add_thread_to_user_db
 from langsmith import Client
-from icecream import ic
+
 import json
 from langgraph.types import StateSnapshot 
 
@@ -169,7 +169,19 @@ def create_graph_input(user_id:str, msg:str, state:StateSnapshot, img=None) -> d
 
     return {"messages": [msg_object], "user" : user_object}
 
-def chat(msg:str, img=None, user_id=None, thread_id=None) -> Tuple[str, str]:
+def chat(msg:str, img:bytes=None, user_id:str=None, thread_id:str=None) -> Tuple[str, str]:
+    """
+    Chat with the assistant.
+    Args:
+        msg (str): The message to send to the assistant.
+        img (bytes): The image to send to the assistant. Can be None.
+        user_id (str): The user ID. Can be None.
+        thread_id (str): The thread ID. Can be None.
+        
+        Returns:
+        str: The response from the assistant.
+        str: The thread ID.
+    """
 
     graph: CompiledStateGraph = get_graph()
 

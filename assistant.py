@@ -1,21 +1,22 @@
 from langchain_openai import ChatOpenAI
 from env_check import load_and_check_env
 from llm_factory import get_llm
-from rag_factory import get_retriever_tool
+
+from icecream import ic
 from image_utils import create_msg_with_img
 from langgraph.prebuilt import ToolNode, tools_condition
 from state import State, get_sqlite_checkpoint, get_value_from_state
 from summary import check_summary, summarize_conversation
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.state import CompiledStateGraph
-from langchain_core.messages import AIMessage, SystemMessage, HumanMessage, RemoveMessage
+from langchain_core.messages import AIMessage, SystemMessage, HumanMessage, RemoveMessage, ToolMessage
 from langchain_core.prompts import PromptTemplate, ChatPromptTemplate
 from utils import render_graph_to_image
 import uuid
 from typing import Tuple
 from user_db import get_user_from_user_db, add_thread_to_user_db
 from langsmith import Client
-
+from tools import get_farmely_tools, get_retriever_tool, get_tool
 import json
 from langgraph.types import StateSnapshot 
 
@@ -37,12 +38,13 @@ def get_prompt_from_langsmith(prompt_identifier:str) -> ChatPromptTemplate:
 
 def assistant(state: State):
 
+    # Check to do this only once per run (not per message)
     prompt_identifier = "assistant-system-message"
     prompt = get_prompt_from_langsmith(prompt_identifier)
     user_name = get_value_from_state(state, "user_name", "anonymous")
-
     system_message = prompt.format_prompt(user_name = user_name).to_messages()
     messages = system_message + state["messages"]
+    
     llm, tools = initalize_llm_and_tools()
     response = llm.invoke(messages)
     last_message = messages[-1]
@@ -50,19 +52,45 @@ def assistant(state: State):
 
 def initalize_llm_and_tools():
     llm:ChatOpenAI = get_llm("openai", "gpt-4o-mini")
-    retriever_tool = get_retriever_tool("retrieve_products")
-    tools = [retriever_tool]
+    tools = get_farmely_tools()
     llm = llm.bind_tools(tools)
+ 
     return llm, tools
+
+def custom_tools_condition(state: State) -> str:
+    """Gibt den Namen des noch nicht beantworteten Tools zurück, sonst END."""
+
+    # Alle AI-Messages mit Tool-Calls
+    tool_call_messages = [
+        msg for msg in state["messages"]
+        if isinstance(msg, AIMessage) and msg.additional_kwargs.get("tool_calls")
+    ]
+    
+    # Alle ToolMessages mit Antworten
+    tool_responses = {
+        msg.tool_call_id for msg in state["messages"]
+        if isinstance(msg, ToolMessage)
+    }
+
+    # Jetzt prüfen, ob es Tool-Calls gibt, die noch keine Antwort haben
+    for msg in reversed(tool_call_messages):  # Neueste zuerst
+        for tool_call in msg.additional_kwargs["tool_calls"]:
+            if tool_call["id"] not in tool_responses:
+                return tool_call["function"]["name"]
+
+    return END
 def create_graph() -> CompiledStateGraph:
     
     # Build Graph
     agent_flow = StateGraph(State)
     # Add all nodes
     agent_flow.add_node("assistant", assistant)
-    tools = get_retriever_tool("retrieve_products")
-    rag = ToolNode([tools])
-    agent_flow.add_node("rag", rag)
+    rag_tool = get_retriever_tool("retrieve_products")
+    stock_tool = get_tool("fetch_product_stock")
+    fetch_product_stock = ToolNode([stock_tool])
+    rag = ToolNode([rag_tool])
+    agent_flow.add_node("retrieve_products", rag)
+    agent_flow.add_node("fetch_product_stock", fetch_product_stock)
     # agent_flow.add_node("check_summary", check_summary)
     agent_flow.add_node(summarize_conversation)
 
@@ -71,14 +99,18 @@ def create_graph() -> CompiledStateGraph:
     # RAG edges
     agent_flow.add_conditional_edges(
         "assistant",
-        tools_condition,
+        custom_tools_condition,
         {
-            "tools" : "rag",
+            # "tools" : "rag",
+            # "tools": ["rag""fetch_product_stock"],
+            "retrieve_products": "retrieve_products",
+            "fetch_product_stock": "fetch_product_stock",
             END: END,
         }
     )
-    agent_flow.add_edge("rag", "assistant")
 
+    agent_flow.add_edge("retrieve_products", "assistant")
+    agent_flow.add_edge("fetch_product_stock", "assistant")
     # Summary edges
     # agent_flow.add_conditional_edges("assistant", check_summary)
     agent_flow.add_conditional_edges(
@@ -96,7 +128,7 @@ def create_graph() -> CompiledStateGraph:
     cp = get_sqlite_checkpoint()
     
     graph = agent_flow.compile(checkpointer=cp)
-    # render_graph_to_image(graph, "graph_with_new_edge.png")
+    # render_graph_to_image(graph, "graph_without_rag.png")
     return graph
 
 def get_graph(force_new=False) -> CompiledStateGraph:
@@ -204,6 +236,9 @@ def chat(msg:str, img:bytes=None, user_id:str=None, thread_id:str=None) -> Tuple
 
 if __name__ == "__main__":
     thread_id = None
+    msg = "Habt ihr Duetto Kakao?"
+    result, thread_id = chat(msg, thread_id=thread_id)
+    print("Assistant: ", result)
     while True:
         print("Type 'exit' to quit.")
         msg = input("User: ")

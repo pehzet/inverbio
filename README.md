@@ -54,3 +54,6 @@ To test via API
 ```shell
 python api.py
 ```
+
+### Product RAG
+To use the products you need to fetch from the API. Afterwars you can process them by executing "farmely_data_clean" and "farmely_data_clean_postprocessing_german" to translate the fields into speaking german names. Then you transfer the products from json to markdown. Just execute "json_to_markdown.py". Finally, you execute the rag_factory. The embedding might take a few seconds.

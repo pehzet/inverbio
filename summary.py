@@ -5,7 +5,7 @@ from state import State
 
 def check_summary(state: State):
     messages = state["messages"]
-    if len(messages) > 6:
+    if len(messages) > 20:
         return "summarize_conversation"
     return END
 

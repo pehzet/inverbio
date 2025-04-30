@@ -18,17 +18,7 @@ def get_vector_store(chroma_dir: str):
 
     return vector_store.as_retriever()
 
-def get_retriever_tool(tool_name:str) -> Tool:
-    if tool_name == "retrieve_products":
-        retriever = get_vector_store("chroma_db")
-        retriever_tool = create_retriever_tool(
-            retriever,
-            "retrieve_products",
-            "Search for food products that Farmely sells and get information about them.",
-        )
-        return retriever_tool
-    else:
-        raise ValueError(f"Tool '{tool_name}' not recognized.")
+
 def refresh_vector_store(markdown_path: str, chroma_dir: str):
     # Remove existing ChromaDB directory if exists to overwrite
     if os.path.exists(chroma_dir):

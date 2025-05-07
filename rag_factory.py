@@ -7,8 +7,26 @@ from langchain.tools.retriever import create_retriever_tool
 from langchain.tools import Tool
 import chromadb
 
+def get_vector_store_firebase(collection_name: str, firebase_config: dict):
+    """
+    Initialize a vector store using Firebase Firestore.
+    """
+    from langchain_firebase import FirebaseVectorStore
+    from langchain_firebase import FirebaseClient
 
-def get_vector_store(chroma_dir: str):
+    # Initialize Firebase client
+    firebase_client = FirebaseClient(**firebase_config)
+
+    # Create a vector store using the Firestore collection
+    vector_store = FirebaseVectorStore(
+        client=firebase_client,
+        collection_name=collection_name,
+        embedding_function=OpenAIEmbeddings(),
+    )
+
+    return vector_store.as_retriever()
+
+def get_vector_store_chroma(chroma_dir: str):
     embeddings = OpenAIEmbeddings()
     persistent_client = chromadb.PersistentClient(path=chroma_dir)
     vector_store = Chroma(

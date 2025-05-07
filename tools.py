@@ -1,10 +1,10 @@
 from langchain.tools import Tool
-from rag_factory import get_vector_store
+from rag_factory import get_vector_store_chroma
 from langchain.tools.retriever import create_retriever_tool
 from langgraph.prebuilt import ToolNode
 def get_retriever_tool(tool_name:str) -> Tool:
     if tool_name == "retrieve_products":
-        retriever = get_vector_store("chroma_db")
+        retriever = get_vector_store_chroma("chroma_db")
         retriever_tool = create_retriever_tool(
             retriever,
             "retrieve_products",

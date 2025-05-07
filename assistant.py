@@ -14,7 +14,8 @@ from langchain_core.prompts import PromptTemplate, ChatPromptTemplate
 from utils import render_graph_to_image
 import uuid
 from typing import Tuple
-from user_db import get_user_from_user_db, add_thread_to_user_db
+# from user_db import get_user_from_user_db, add_thread_to_user_db
+from user_db import get_user_db
 from langsmith import Client
 from tools import get_farmely_tools, get_retriever_tool, get_tool
 import json
@@ -191,8 +192,10 @@ def create_graph_input(user_id:str, msg:str, state:StateSnapshot, img=None) -> d
         dict: The input for the graph.'''
     
     user_object = state.values.get("user", {}) 
+
     if not user_object:
-        user_object = get_user_from_user_db(user_id)
+        user_db = get_user_db("firebase")
+        user_object = user_db.get_user_from_user_db(user_id)
 
     if img:
         msg_object = create_msg_with_img(msg, img)
@@ -216,12 +219,12 @@ def chat(msg:str, img:bytes=None, user_id:str=None, thread_id:str=None) -> Tuple
     """
 
     graph: CompiledStateGraph = get_graph()
-
+    user_db = get_user_db("firebase")
     if not user_id:
         user_id = "anonymous"
     if not thread_id:  
         thread_id = str(user_id) + "-" + str(uuid.uuid4())
-        add_thread_to_user_db(thread_id, user_id)
+        user_db.add_thread_to_user_db(thread_id, user_id)
     config = {"configurable": {"thread_id": thread_id}}
     state:StateSnapshot = graph.get_state(config)
  

@@ -1,29 +1,34 @@
+import os
+print(os.environ.get("INVERBIO_ENV"))
+if os.environ.get("INVERBIO_ENV") == "dev":
+    import sys
+    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from agent.env_check import load_and_check_env
+    load_and_check_env()
+
 from langchain_openai import ChatOpenAI
-from env_check import load_and_check_env
-from llm_factory import get_llm
-from icecream import ic
-from image_utils import create_msg_with_img
+from agent.llm_factory import get_llm
+from agent.image_utils import create_msg_with_img
 from langgraph.prebuilt import ToolNode, tools_condition
-from state import State, get_sqlite_checkpoint, get_value_from_state
-from summary import check_summary, summarize_conversation
+from agent.state import State, get_checkpoint, get_value_from_state
+from agent.summary import check_summary, summarize_conversation
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.state import CompiledStateGraph
 from langchain_core.messages import AIMessage, SystemMessage, HumanMessage, RemoveMessage, ToolMessage
 from langchain_core.prompts import PromptTemplate, ChatPromptTemplate
-from utils import render_graph_to_image
+from agent.utils import render_graph_to_image
 import uuid
 from typing import Tuple
-from user_db import get_user_db
+from agent.user_management import get_user_db
 from langsmith import Client
-from tools import get_farmely_tools, get_retriever_tool, get_tool
+from agent.tools import get_farmely_tools, get_retriever_tool, get_tool
 import json
 from langgraph.types import StateSnapshot
 
 
+
 class Agent:
-    
-    def __init__(self, db_source: str = "sqlite"):
-        load_and_check_env()
+    def __init__(self, db_source: str = "firestore"):
         self.graph = None
         self.user_db = get_user_db(db_source)
         self.langsmith_client = Client()
@@ -102,9 +107,10 @@ class Agent:
             }
         )
         agent_flow.add_edge("summarize_conversation", END)
-
-        cp = get_sqlite_checkpoint()
+    
+        cp = get_checkpoint(type="firestore")
         graph = agent_flow.compile(checkpointer=cp)
+
         return graph
 
     def get_graph(self, force_new=False) -> CompiledStateGraph:
@@ -130,6 +136,8 @@ class Agent:
         messages = state.values.get("messages_history") or state.values.get("messages", [])
         messages_content = []
         for msg in messages:
+            if msg.content == "":
+                continue
             if isinstance(msg, AIMessage):
                 messages_content.append({"role": "assistant", "content": msg.content, "img": None})
             elif isinstance(msg, HumanMessage):
@@ -137,16 +145,16 @@ class Agent:
 
         return messages_content
 
-    def create_graph_input(self, user_id: str, msg: str, state: StateSnapshot, img=None) -> dict:
+    def create_graph_input(self, user_id: str, msg: str, state: StateSnapshot, images:list[str]=None) -> dict:
         user_object = state.values.get("user", {})
         if not user_object:
             user_object = self.user_db.get_user_from_user_db(user_id)
 
-        msg_object = create_msg_with_img(msg, img) if img else HumanMessage(content=msg)
+        msg_object = create_msg_with_img(msg, images) if images else HumanMessage(content=msg)
 
         return {"messages": [msg_object], "user": user_object}
 
-    def chat(self, msg: str, img: bytes = None, user_id: str = None, thread_id: str = None) -> Tuple[str, str]:
+    def chat(self, msg: str, images: list[str] = None, user_id: str = None, thread_id: str = None) -> Tuple[str, str]:
         graph = self.get_graph()
         if not user_id:
             user_id = "anonymous"
@@ -156,7 +164,7 @@ class Agent:
 
         config = {"configurable": {"thread_id": thread_id}}
         state = graph.get_state(config)
-        graph_input = self.create_graph_input(user_id, msg, state, img)
+        graph_input = self.create_graph_input(user_id, msg, state, images)
 
         result = graph.invoke(graph_input, config)
         return result["messages"][-1].content, thread_id
@@ -165,8 +173,9 @@ class Agent:
 if __name__ == "__main__":
     agent = Agent()
     thread_id = None
-    msg = "Habt ihr Duetto Kakao?"
+    msg = "Habt ihr Helles von Friedensreiter?"
     result, thread_id = agent.chat(msg, thread_id=thread_id)
+    print(thread_id)
     print("Assistant:", result)
 
     while True:

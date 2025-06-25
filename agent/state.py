@@ -4,10 +4,11 @@ from langgraph.graph.message import add_messages
 from typing import Annotated
 import sqlite3
 from langgraph.checkpoint.sqlite import SqliteSaver
-
+from langgraph_checkpoint_firestore import FirestoreSaver,FirestoreSerializer
 import os
 import json
-from typing import Any, Optional
+from typing import Any, Optional, Union, Literal
+from agent.saver import FirebaseImageFirestoreSaver
 class State(MessagesState):
     summary: str
     messages_history: Annotated[list[AnyMessage], add_messages]
@@ -15,6 +16,19 @@ class State(MessagesState):
 
 def get_state():
     return State()
+
+def get_checkpoint(type:Literal["sqlite", "firestore"]) -> Union[SqliteSaver, FirestoreSaver]:
+    if type == "sqlite":
+        return get_sqlite_checkpoint()
+    elif type == "firestore":
+        return get_firestore_checkpoint()
+    else:
+        raise ValueError(f"Checkpoint type '{type}' not recognized.")
+
+def get_firestore_checkpoint():
+    # memory = FirestoreSaver(project_id="inverbio-8342a", checkpoints_collection='checkpoints', writes_collection='writes')
+    memory = FirebaseImageFirestoreSaver(project_id="inverbio-8342a", checkpoints_collection='checkpoints', writes_collection='writes')
+    return memory
 
 def get_sqlite_checkpoint():
     db_path = "state_db/example.db"

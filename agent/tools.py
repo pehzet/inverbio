@@ -1,10 +1,11 @@
 from langchain.tools import Tool
-from rag_factory import get_vector_store_chroma
+from agent.rag_factory import get_vector_store_chroma, get_vector_store_firestore
 from langchain.tools.retriever import create_retriever_tool
 from langgraph.prebuilt import ToolNode
+from agent.farmely_api_langchain import fetch_product_stock
 def get_retriever_tool(tool_name:str) -> Tool:
     if tool_name == "retrieve_products":
-        retriever = get_vector_store_chroma("chroma_db")
+        retriever = get_vector_store_firestore("products")
         retriever_tool = create_retriever_tool(
             retriever,
             "retrieve_products",
@@ -17,10 +18,10 @@ def get_retriever_tool(tool_name:str) -> Tool:
 
 
 def get_tool(name:str) -> Tool:
+
     if name == "retrieve_products":
         return get_retriever_tool(name)
     elif name == "fetch_product_stock":
-        from farmely_api_langchain import fetch_product_stock
         return fetch_product_stock
     else:
         raise ValueError(f"Tool '{name}' not recognized.")
@@ -32,3 +33,8 @@ def get_farmely_tools() -> list[Tool]:
     ]
     return tools
 
+if __name__ == "__main__":
+
+    rag = get_retriever_tool("retrieve_products")
+    result = rag.invoke("Duetto Kakao")
+    print(result)

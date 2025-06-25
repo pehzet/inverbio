@@ -1,8 +1,9 @@
 import streamlit as st
-from assistant import chat, get_messages_by_thread_id
+# from assistant import chat, get_messages_by_thread_id
+from assistant_cls import Agent
 import random
 
-from user_db import get_thread_ids_by_user_id
+from user_db import get_user_db
 
 st.title("Farmo - your assistant at farmely")
 
@@ -15,6 +16,10 @@ if "selected_thread" not in st.session_state:
     st.session_state["selected_thread"] = None
 if "input_thread_id" not in st.session_state:
     st.session_state["input_thread_id"] = ""
+if "agent" not in st.session_state:
+    st.session_state["agent"] = Agent()
+if "user_db" not in st.session_state:
+    st.session_state["user_db"] = get_user_db(type="firebase")
 
 # Callback zum Setzen der thread_id
 def update_thread_id():
@@ -34,7 +39,7 @@ if user_id:
 # Zeige aktuelle User ID
 if st.session_state.user_id:
     st.markdown(f"**User ID:** {st.session_state.user_id}")
-    threads = get_thread_ids_by_user_id(user_id=st.session_state.user_id)
+    threads = st.session_state.user_db.get_thread_ids_by_user_id(user_id=st.session_state.user_id)
 else:
     threads = []
 
@@ -61,7 +66,7 @@ if st.session_state.thread_id:
 
 def get_messages():
     if st.session_state.thread_id:
-        messages = get_messages_by_thread_id(st.session_state.thread_id)
+        messages = st.session_state.agent.get_messages_by_thread_id(st.session_state.thread_id)
         return messages
     return []
 
@@ -81,6 +86,6 @@ if prompt := st.chat_input("What is up?"):
     waiting_msgs = ["I look in the basement", "I ask my boss", "I check the fridge", "Computer is thinking... beep boop"] 
     waiting_msg = random.choice(waiting_msgs)
     with st.spinner(waiting_msg):
-        response, thread_id = chat(prompt, user_id=st.session_state.user_id, thread_id=st.session_state.thread_id)
+        response, thread_id = st.session_state.agent.chat(prompt, user_id=st.session_state.user_id, thread_id=st.session_state.thread_id)
         st.session_state.thread_id = thread_id
         st.rerun()

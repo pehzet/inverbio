@@ -2,8 +2,7 @@ import os
 import requests
 from typing import Optional
 import time
-from env_check import load_and_check_env
-load_and_check_env()
+
 
 HOST_VAR_NAME = "FARMELY_HOST"
 API_KEY_VAR_NAME = "FARMELY_API_KEY"
@@ -124,6 +123,7 @@ def fetch_product_stock_api(product_id: str):
     try:
         response = requests.get(url, headers=headers)
         response.raise_for_status()
+        print(response.json())
         return response.json()
     except requests.RequestException as e:
         print(f"Fehler beim Abrufen des Lagerbestands: {e}")

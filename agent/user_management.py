@@ -7,16 +7,16 @@ from typing import List, Dict, Literal, Union
 from datetime import datetime
 import json
 import os
-from env_check import load_and_check_env
-load_and_check_env()
-
+from agent.firebase_utils import get_firestore_client
+if os.environ.get("INVERBIO_ENV") == "dev":
+    from env_check import load_and_check_env
+    load_and_check_env()
 
 
 
 class UserSQLite:
     def __init__(self, db_path='user_db/user.db'):
         self.db_path = db_path
-        
 
     def create_tables(self) -> bool:
         """Create the SQLite database and tables if they do not exist."""
@@ -182,10 +182,9 @@ class UserSQLite:
         thread_ids = [thread.get("thread_id") for thread in threads_list]
         return thread_ids
 
-class UserFirebase:
+class UserFirestore:
     def __init__(self):
-        firebase_admin.initialize_app()
-        self.db = firestore.client()
+        self.db = get_firestore_client()
 
     def create_tables(self):
         """Firestore benötigt keine explizite Erstellung von Collections oder Tabellen."""
@@ -200,8 +199,8 @@ class UserFirebase:
             user_ref = self.db.collection('users').document(user_id)
             user_ref.set({
                 'user_id': user_id,
-                'created_at': datetime.utcnow(),
-                'updated_at': datetime.utcnow(),
+                'created_at': datetime.now().isoformat(),
+                'updated_at': datetime.now().isoformat(),
                 'status': 'active',
                 'preferences': preferences
             })
@@ -234,8 +233,8 @@ class UserFirebase:
                 'title': 'New Thread',
                 'description': 'New Thread',
                 'user_id': user_id,
-                'created_at': datetime.utcnow(),
-                'updated_at': datetime.utcnow()
+                'created_at': datetime.now().isoformat(),
+                'updated_at': datetime.now().isoformat()
             })
             return True
         except Exception as e:
@@ -273,10 +272,10 @@ class UserFirebase:
         threads_list = self.get_threads_by_user_id(user_id)
         return [thread.get('thread_id') for thread in threads_list]
 
-def get_user_db(type: Literal["sqlite", "firebase"] = "sqlite") -> Union[UserSQLite, UserFirebase]:
+def get_user_db(type: Literal["sqlite", "firestore"] = "firebase") -> Union[UserSQLite, UserFirestore]:
     if type == "sqlite":
         return UserSQLite()
-    elif type == "firebase":
-        return UserFirebase()
+    elif type == "firestore":
+        return UserFirestore()
     else:
         raise ValueError("Invalid type")

@@ -1,7 +1,6 @@
 from langchain_core.tools import tool
-from farmely_api import fetch_product_stock_api
+from agent.farmely_api import fetch_product_stock_api
 import json
-from icecream import ic
 import os
 def _get_product_id_by_name(product_name: str) -> str:
     """
@@ -31,6 +30,7 @@ def fetch_product_stock(product_id: str):
     :param product_id: The product ID 
     :return: JSON string with stock information or None on error
     """
+    print(f"Fetching stock for product ID: {product_id}")
     try:
         _id = int(product_id)
     except ValueError:

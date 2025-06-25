@@ -1,11 +1,13 @@
 langgraph
 langchain
 langsmith
-langchain_anthropic
 langchain_openai
 langchain-community
 langchain_chroma
 dotenv
 chromadb
 langgraph-checkpoint-sqlite
+langgraph-checkpoint-firestore
 streamlit
+firebase-admin
+firebase-functions

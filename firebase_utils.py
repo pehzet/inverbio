@@ -31,3 +31,6 @@ def get_firestore_client() -> firestore.Client:
     """
     initialize_firestore()
     return firestore.client()
+
+
+

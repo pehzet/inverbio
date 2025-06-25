@@ -6,20 +6,20 @@ from langchain_chroma import Chroma
 from langchain.tools.retriever import create_retriever_tool
 from langchain.tools import Tool
 import chromadb
-
-def get_vector_store_firebase(collection_name: str, firebase_config: dict):
+from langchain_google_firestore import FirestoreVectorStore 
+from firebase_utils import get_firestore_client
+def get_vector_store_firestore(collection_name: str, firebase_config: dict):
     """
     Initialize a vector store using Firebase Firestore.
     """
-    from langchain_firebase import FirebaseVectorStore
-    from langchain_firebase import FirebaseClient
+
 
     # Initialize Firebase client
-    firebase_client = FirebaseClient(**firebase_config)
-
+ 
+    client = get_firestore_client()
     # Create a vector store using the Firestore collection
-    vector_store = FirebaseVectorStore(
-        client=firebase_client,
+    vector_store = FirestoreVectorStore(
+        client=client,
         collection_name=collection_name,
         embedding_function=OpenAIEmbeddings(),
     )

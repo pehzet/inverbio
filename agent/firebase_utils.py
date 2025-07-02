@@ -26,6 +26,7 @@ def initialize_firebase(
             app_opts["storageBucket"] = storage_bucket
         # 3) App initialisieren
         firebase_admin.initialize_app(cred, app_opts)
+        # firebase_admin.initialize_app()
 
 def get_firestore_client() -> firestore.Client:
     initialize_firebase()

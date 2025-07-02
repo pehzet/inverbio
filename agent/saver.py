@@ -6,9 +6,8 @@ from urllib.parse import urlparse
 from langchain.schema import HumanMessage, AIMessage
 from langgraph_checkpoint_firestore.firestoreSaver import FirestoreSaver
 from agent.firebase_utils import get_storage_bucket
-
-
-
+from langgraph.checkpoint.base import CheckpointTuple
+from icecream import ic
 class FirebaseImageFirestoreSaver(FirestoreSaver):
     def __init__(
         self,
@@ -101,32 +100,86 @@ class FirebaseImageFirestoreSaver(FirestoreSaver):
             processed_writes.append((channel, value))
 
         super().put_writes(config, processed_writes, task_id)
+    # def _restore_data_urls(self, obj: Any) -> None:
+    #     """
+    #     Rekursive Hilfsfunktion: ersetzt in obj alle public URLs zurück in data-URLs.
+    #     """
+    #     # 1) LangChain Messages auslassen, aber in deren content weitersuchen
+    #     if isinstance(obj, (HumanMessage, AIMessage)):
+    #         for chunk in obj.content:
+    #             self._restore_data_urls(chunk)
+    #         return
 
-    def get(self, config: dict, checkpoint_id: str) -> tuple:
-        data, versions = super().get(config, checkpoint_id)
+    #     # 2) dict: auf image_url prüfen, sonst rekursiv in alle Werte
+    #     if isinstance(obj, dict):
+    #         img = obj.get("image_url")
+    #         if obj.get("type") == "image_url" and isinstance(img, dict):
+    #             public_url = img["url"]
+    #             prefix = img.get("prefix", "data:image/png;base64")
+    #             # Bild herunterladen und base64-codieren
+    #             raw = self._download_image(public_url)
+    #             b64 = base64.b64encode(raw).decode("utf-8")
+    #             # URL-Feld durch data-URL ersetzen
+    #             img["url"] = f"{prefix},{b64}"
+    #         else:
+    #             for v in obj.values():
+    #                 self._restore_data_urls(v)
+    #         return
 
-        # rekonstruiere data URLS
-        def recurse_restore(obj: Any):
-            if isinstance(obj, (HumanMessage, AIMessage)):
-                for chunk in obj.content:
-                    recurse_restore(chunk)
-                return
-            if isinstance(obj, dict):
-                if obj.get('type') == 'image_url' and isinstance(obj.get('image_url'), dict):
-                    public_url = obj['image_url']['url']
-                    prefix = obj['image_url'].get('prefix', 'data:image/png;base64')
-                    raw = self._download_image(public_url)
-                    b64 = base64.b64encode(raw).decode('utf-8')
-                    obj['image_url']['url'] = f"{prefix},{b64}"
-                    return
-                for v in obj.values():
-                    recurse_restore(v)
-                return
-            if isinstance(obj, list):
-                for item in obj:
-                    recurse_restore(item)
-                return
+    #     # 3) list: in jedes Element reingehen
+    #     if isinstance(obj, list):
+    #         for item in obj:
+    #             self._restore_data_urls(item)
+    #         return
+    # def get(self, config: dict, checkpoint_id: str) -> tuple:
+    #     print(f"GET CALLED with id {checkpoint_id}!!!")
+    #     data, versions = super().get(config, checkpoint_id)
+    #     print("data", data)
+    #     # rekonstruiere data URLS
+    #     def recurse_restore(obj: Any):
+    #         if isinstance(obj, (HumanMessage, AIMessage)):
+    #             for chunk in obj.content:
+    #                 recurse_restore(chunk)
+    #             return
+    #         if isinstance(obj, dict):
+    #             if obj.get('type') == 'image_url' and isinstance(obj.get('image_url'), dict):
+    #                 public_url = obj['image_url']['url']
+    #                 prefix = obj['image_url'].get('prefix', 'data:image/png;base64')
+    #                 raw = self._download_image(public_url)
+    #                 b64 = base64.b64encode(raw).decode('utf-8')
+    #                 obj['image_url']['url'] = f"{prefix},{b64}"
+    #                 return
+    #             for v in obj.values():
+    #                 recurse_restore(v)
+    #             return
+    #         if isinstance(obj, list):
+    #             for item in obj:
+    #                 recurse_restore(item)
+    #             return
 
-        recurse_restore(data)
+    #     recurse_restore(data)
 
-        return data, versions
+    #     return data, versions
+    # def get_tuple(self, config: dict, **kwargs) -> CheckpointTuple | None:
+    #     saved = super().get_tuple(config, **kwargs)
+    #     if not saved:
+    #         return None
+
+    #     # saved ist ein NamedTuple mit den Feldern:
+    #     #   .config, .checkpoint, .metadata, .parent_config, .pending_writes
+    #     # Du kannst also so darauf zugreifen:
+
+    #     checkpoint_dict = saved.checkpoint   # das Dict mit 'channel_values' etc.
+     
+    #     # Jetzt die Daten‐URLs wiederherstellen – z.B. in allen Channels:
+    #     # wenn Dein Bild-JSON in checkpoint_dict['channel_values'] liegt:
+    #     self._restore_data_urls(checkpoint_dict['channel_values'])
+  
+    #     # Und schließlich das unveränderte NamedTuple zurückgeben:
+    #     return CheckpointTuple(
+    #         config=saved.config,
+    #         checkpoint=saved.checkpoint,
+    #         metadata=saved.metadata,
+    #         parent_config=saved.parent_config,
+    #         pending_writes=saved.pending_writes
+    #     )

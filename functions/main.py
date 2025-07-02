@@ -5,7 +5,9 @@ from firebase_functions import https_fn, options
 from firebase_admin import initialize_app
 import json
 import os
+import time
 from agent.assistant_cls import Agent
+from icecream import ic
 if os.environ.get("INVERBIO_ENV") == "dev":
     from agent.env_check import load_and_check_env
     load_and_check_env()
@@ -38,23 +40,23 @@ def chat(req: https_fn.Request):
         response = json.dumps(response)
         return https_fn.Response(response, status=400)
  
+    keys = data.keys()
 
     msg = data.get("msg")
     img = data.get("img")
-    for i, _img in enumerate(img):
-        with open(f"test_img_b64_{i}.txt", "w") as image_file:
-            image_file.write(_img)
+
     user_id = data.get("user_id")
     thread_id = data.get("thread_id")
 
     agent = Agent()
     answer, thread_id = agent.chat(msg, img, user_id, thread_id)
-    print("thread_id", thread_id)
+   
     response = {
         "response": answer,
         "thread_id": thread_id
     }
     response = json.dumps(response)
+    ic(response)
     return https_fn.Response(response, status=200, headers=RESPONSE_HEADERS)
 
 @https_fn.on_request(timeout_sec=300, memory=options.MemoryOption.GB_1, secrets=SECRETS)
@@ -78,8 +80,14 @@ def get_messages_by_thread_id(req: https_fn.Request):
         response = json.dumps(response)
         return https_fn.Response(response, status=400)
     thread_id = data.get("thread_id")
+    t0 = time.time()
     agent = Agent()
+    t1 = time.time()
+    print(f"Agent initialized in {t1 - t0:.2f} seconds")
+    t0 = time.time()
     messages = agent.get_messages_by_thread_id(thread_id)
+    t1 = time.time()
+    print(f"Messages fetched in {t1 - t0:.2f} seconds")
     response = {
         "messages": messages
     }

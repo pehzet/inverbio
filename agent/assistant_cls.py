@@ -24,9 +24,12 @@ from langsmith import Client
 from agent.tools import get_farmely_tools, get_retriever_tool, get_tool
 import json
 from langgraph.types import StateSnapshot
-
-
-
+from agent.image_utils import _encode_image, _decode_image
+from typing import List, Dict, Any
+import requests
+import time
+import datetime
+from icecream import ic
 class Agent:
     def __init__(self, db_source: str = "firestore"):
         self.graph = None
@@ -109,6 +112,7 @@ class Agent:
         agent_flow.add_edge("summarize_conversation", END)
     
         cp = get_checkpoint(type="firestore")
+
         graph = agent_flow.compile(checkpointer=cp)
 
         return graph
@@ -128,23 +132,91 @@ class Agent:
             else:
                 print(f"System: {m.content}\n")
 
-    def get_messages_by_thread_id(self, thread_id: str):
+    # def get_messages_by_thread_id(self, thread_id: str):
+    #     graph = self.get_graph()
+    #     config = {"configurable": {"thread_id": thread_id}}
+    #     state = graph.get_state(config)
+
+    #     messages = state.values.get("messages_history") or state.values.get("messages", [])
+    #     messages_content = []
+    #     for msg in messages:
+    #         if msg.content == "":
+    #             continue
+    #         if isinstance(msg, AIMessage):
+    #             messages_content.append({"role": "assistant", "content": msg.content, "img": None})
+    #         elif isinstance(msg, HumanMessage):
+    #             messages_content.append({"role": "user", "content": msg.content, "img": None})
+    #     return messages_content
+    def get_messages_by_thread_id(self, thread_id: str) -> List[Dict[str, Any]]:
+
         graph = self.get_graph()
+
         config = {"configurable": {"thread_id": thread_id}}
         state = graph.get_state(config)
 
+
         messages = state.values.get("messages_history") or state.values.get("messages", [])
-        messages_content = []
+        messages_content: List[Dict[str, Any]] = []
+
         for msg in messages:
-            if msg.content == "":
+            if isinstance(msg, RemoveMessage) or isinstance(msg, ToolMessage):
                 continue
-            if isinstance(msg, AIMessage):
-                messages_content.append({"role": "assistant", "content": msg.content, "img": None})
-            elif isinstance(msg, HumanMessage):
-                messages_content.append({"role": "user", "content": msg.content, "img": None})
+            raw = msg.content
+            if not raw:
+                continue
+
+            # Wenn content ein einfacher String ist:
+            if isinstance(raw, str):
+                entry = {
+                    "role": "assistant" if isinstance(msg, AIMessage) else "user",
+                    "content": raw,
+                    "images": None
+                }
+                messages_content.append(entry)
+                continue
+
+            # Ansonsten gehen wir davon aus, dass raw eine Liste von Parts ist
+            # (je ein Dict mit type='text' oder type='image_url')
+            texts: List[str] = []
+            imgs: List[str] = []
+
+            for part in raw:
+                ptype = part.get("type")
+                if ptype == "text":
+                    # sammle reinen Text
+                    text = part.get("text", "").strip()
+                    if text:
+                        texts.append(text)
+
+                elif ptype == "image_url":
+                    # strukturiert als {'image_url': {'prefix':..., 'url':...}, 'type':'image_url'}
+                    info = part.get("image_url", {})
+                    url = info.get("url")
+                    prefix = info.get("prefix", "data:image/png;base64")
+                    if not url:
+                        continue
+
+                    # schon Data-URI?
+                    if url.startswith("data:") and ";base64," in url:
+                        data_uri = url
+                    else:
+                        # echtes Bild herunterladen und in Base64 umwandeln
+                        resp = requests.get(url)
+                        resp.raise_for_status()
+                        b64 = _encode_image(resp.content)
+                        # Content-Type aus Prefix extrahieren (z.B. "data:image/png;base64")
+                        data_uri = f"{prefix},{b64}"
+
+                    imgs.append(data_uri)
+
+            entry = {
+                "role": "assistant" if isinstance(msg, AIMessage) else "user",
+                "content": " ".join(texts).strip() or None,
+                "images": imgs if imgs else None
+            }
+            messages_content.append(entry)
 
         return messages_content
-
     def create_graph_input(self, user_id: str, msg: str, state: StateSnapshot, images:list[str]=None) -> dict:
         user_object = state.values.get("user", {})
         if not user_object:

@@ -1,5 +1,5 @@
 from langchain.tools import Tool
-from agent.rag_factory import get_vector_store_chroma, get_vector_store_firestore
+from agent.rag_factory import get_vector_store_firestore
 from langchain.tools.retriever import create_retriever_tool
 from langgraph.prebuilt import ToolNode
 from agent.farmely_api_langchain import fetch_product_stock

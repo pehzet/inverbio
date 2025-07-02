@@ -30,16 +30,16 @@ def create_msg_with_img(
 
     if images:
         for img_str in images:
-            img_str = img_str.strip()
+            # img_str = img_str.strip()
             # if it's already a data URL, use it verbatim
             if img_str.startswith("data:") and "base64," in img_str:
-                url = img_str
+                image_data = img_str
             else:
                 # otherwise assume it's raw base64 and prepend
-                url = f"data:image/png;base64,{img_str}"
+                image_data = f"data:image/png;base64,{img_str}"
             content.append({
                 "type": "image_url",
-                "image_url": {"url": url}
+                "image_url": {"url": f"{image_data}"}
             })
 
     elif image_path:
@@ -48,7 +48,7 @@ def create_msg_with_img(
         b64 = _encode_image(raw)
         content.append({
             "type": "image_url",
-            "image_url": {"url": f"data:image/png;base64,{b64}"}
+            "image_url": f"data:image/png;base64,{b64}"
         })
 
     return HumanMessage(content=content)

@@ -83,35 +83,59 @@ class Agent:
         return cleaned
     def assistant(self, state: ComplexState):
 
+    
         base_sys = self.get_prompt_from_langsmith("assistant-system-message")\
-                    .format_prompt(
-                        user_name = state["user"].get("name", "Anonym"),
-                        user_preferences = json.dumps(
-                            state["user"].get("preferences", {}), ensure_ascii=False)
-                    ).to_messages()             
-
- 
-        ctx_payload = {
-            "mentioned_products": state["context"].get("mentioned_products", []),
-            "current_products":   state["context"].get("current_products", []),
-            "location":           state["context"].get("location"),
-            "timestamp_utc":      state["context"].get("last_message_utc"),
-        }
-        context_msg = SystemMessage(
-            content=f"<KONTEXT>\n{json.dumps(ctx_payload, ensure_ascii=False)}\n</KONTEXT>",
-            additional_kwargs={"internal": True}   
-        )
+            .format_prompt(
+                user_name       = state["user"].get("name", "Anonym"),
+                user_preferences = json.dumps(
+                    state["user"].get("preferences", {}), ensure_ascii=False)
+            ).to_messages()
 
 
         history_raw = state["messages"]
-        history = self._clean_history_for_llm(history_raw) 
+        history     = self._clean_history_for_llm(history_raw)
 
-        messages_for_llm = base_sys + [context_msg] + history
 
-        llm, _ = self.initalize_llm_and_tools()
+        last_user_idx = max(
+            i for i, m in enumerate(history) if isinstance(m, HumanMessage)
+        )
+        history_before_last = history[:last_user_idx]
+        last_user           = history[last_user_idx]
+        history_after_last  = history[last_user_idx+1:]
+
+
+        gen_ctx_payload = {
+            "mentioned_products": state["context"].get("mentioned_products", []),
+            "location":           state["context"].get("location"),
+    
+        }
+        gen_ctx_msg = SystemMessage(
+            content=f"<GEN-CONTEXT>\n{json.dumps(gen_ctx_payload, ensure_ascii=False)}\n</GEN-CONTEXT>",
+            additional_kwargs={"internal": True}
+        )
+
+
+        cur_ctx_payload = {
+            "current_products": state["context"].get("current_products", []),
+            "timestamp_utc":    state["context"].get("last_message_utc"),
+        }
+        cur_ctx_msg = SystemMessage(
+            content=f"<CURRENT-CONTEXT>\n{json.dumps(cur_ctx_payload, ensure_ascii=False)}\n</CURRENT-CONTEXT>",
+            additional_kwargs={"internal": True}
+        )
+
+
+        messages_for_llm = (
+            base_sys +
+            [gen_ctx_msg] +
+            history_before_last +
+            [cur_ctx_msg, last_user] +   #  ← Current Context direkt vor User
+            history_after_last # required for tool calls to work properly
+        )
+
+        llm, _  = self.initalize_llm_and_tools()
         response = llm.invoke(messages_for_llm)
 
-        last_user = next(m for m in reversed(history) if isinstance(m, HumanMessage))
         return {
             "messages": [response],
             "messages_history": [last_user, response]
@@ -381,7 +405,6 @@ class Agent:
         if barcode:
             if isinstance(barcode, str):
                 product = get_product_by_barcode(barcode)
-                ic(product)
                 if product:
                     additional_context["mentioned_products"] = [product]
                     additional_context["current_products"] = [product]
@@ -418,7 +441,7 @@ class Agent:
         if barcode:
             meta["barcode"] = barcode
 
-        msg = msg.copy(update={"metadata": meta})
+        msg = msg.model_copy(update={"metadata": meta})
 
         return {"messages": [msg]}
 

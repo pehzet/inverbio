@@ -96,7 +96,7 @@ class UserSQLite:
         nested_dict = recurse(nested_dict)
         return nested_dict
 
-    def get_user_from_user_db(self, user_id:str) -> Dict:
+    def get_user_information_from_user_db(self, user_id:str) -> Dict:
         """Load user from database"""
         if user_id in ["anonymous", None]:
             return {"user_id": "anonymous", "preferences": {}}
@@ -209,7 +209,7 @@ class UserFirestore:
             print(f"Error adding user: {e}")
             return False
 
-    def get_user_from_user_db(self, user_id: str) -> Dict:
+    def get_user_information_from_user_db(self, user_id: str) -> Dict:
         """Get user document."""
         if user_id in ["anonymous", None]:
             return {"user_id": "anonymous", "preferences": {}}

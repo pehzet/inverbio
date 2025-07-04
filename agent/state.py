@@ -9,13 +9,15 @@ import os
 import json
 from typing import Any, Optional, Union, Literal
 from agent.saver import FirebaseImageFirestoreSaver
-class State(MessagesState):
+from agent.utils import merge_dicts
+class ComplexState(MessagesState):
     summary: str
     messages_history: Annotated[list[AnyMessage], add_messages]
-    user: dict 
+    user:     Annotated[dict, merge_dicts]
+    context:  Annotated[dict, merge_dicts]
 
 def get_state():
-    return State()
+    return ComplexState()
 
 def get_checkpoint(type:Literal["sqlite", "firestore"]) -> Union[SqliteSaver, FirestoreSaver]:
     if type == "sqlite":

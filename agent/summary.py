@@ -1,15 +1,15 @@
 from langgraph.graph import StateGraph, START, END
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import AIMessage, SystemMessage, HumanMessage, RemoveMessage
-from agent.state import State
+from agent.state import ComplexState
 
-def check_summary(state: State):
+def check_summary(state: ComplexState):
     messages = state["messages"]
     if len(messages) > 20:
         return "summarize_conversation"
     return END
 
-def summarize_conversation(state: State):
+def summarize_conversation(state: ComplexState):
     summary = state.get("summary", "")
     if summary:
         summary_message = (

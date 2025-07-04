@@ -10,7 +10,7 @@ from langchain_openai import ChatOpenAI
 from agent.llm_factory import get_llm
 from agent.image_utils import create_msg_with_img
 from langgraph.prebuilt import ToolNode, tools_condition
-from agent.state import State, get_checkpoint, get_value_from_state
+from agent.state import ComplexState, get_checkpoint, get_value_from_state
 from agent.summary import check_summary, summarize_conversation
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.state import CompiledStateGraph
@@ -25,11 +25,14 @@ from agent.tools import get_farmely_tools, get_retriever_tool, get_tool
 import json
 from langgraph.types import StateSnapshot
 from agent.image_utils import _encode_image, _decode_image
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Literal
 import requests
 import time
 import datetime
 from icecream import ic
+
+from barcode.barcode import get_product_by_barcode, get_products_by_barcodes
+
 class Agent:
     def __init__(self, db_source: str = "firestore"):
         self.graph = None
@@ -48,19 +51,74 @@ class Agent:
         llm = llm.bind_tools(tools)
         return llm, tools
 
-    def assistant(self, state: State):
-        prompt_identifier = "assistant-system-message"
-        prompt = self.get_prompt_from_langsmith(prompt_identifier)
-        user_name = get_value_from_state(state, "user_name", "anonymous")
-        system_message = prompt.format_prompt(user_name=user_name).to_messages()
-        messages = system_message + state["messages"]
+    def _format_products_for_prompt(self, products):
+        if not products:
+            return ""
+        return "\n".join(
+            f"- {p['name']} (SKU {p['id']}, {p.get('brand','')})"
+            for p in products
+        )
+    def _clean_history_for_llm(self, history):
+        """
+        Removes RemoveMessages and all ToolMessages whose
+        triggering assistant/tool_calls message does not (or no longer) exist.
+        """
+    
+        valid_tool_ids = {
+            t["id"]
+            for m in history
+            if isinstance(m, AIMessage) and m.additional_kwargs.get("tool_calls")
+            for t in m.additional_kwargs["tool_calls"]
+        }
 
-        llm, tools = self.initalize_llm_and_tools()
-        response = llm.invoke(messages)
-        last_message = messages[-1]
-        return {"messages": [response], "messages_history": [last_message, response]}
+  
+        cleaned = []
+        for m in history:
+            if isinstance(m, RemoveMessage):
+                continue                                
+            if isinstance(m, ToolMessage) and m.tool_call_id not in valid_tool_ids:
+                continue                              
+            cleaned.append(m)
 
-    def custom_tools_condition(self, state: State) -> str:
+        return cleaned
+    def assistant(self, state: ComplexState):
+
+        base_sys = self.get_prompt_from_langsmith("assistant-system-message")\
+                    .format_prompt(
+                        user_name = state["user"].get("name", "Anonym"),
+                        user_preferences = json.dumps(
+                            state["user"].get("preferences", {}), ensure_ascii=False)
+                    ).to_messages()             
+
+ 
+        ctx_payload = {
+            "mentioned_products": state["context"].get("mentioned_products", []),
+            "current_products":   state["context"].get("current_products", []),
+            "location":           state["context"].get("location"),
+            "timestamp_utc":      state["context"].get("last_message_utc"),
+        }
+        context_msg = SystemMessage(
+            content=f"<KONTEXT>\n{json.dumps(ctx_payload, ensure_ascii=False)}\n</KONTEXT>",
+            additional_kwargs={"internal": True}   
+        )
+
+
+        history_raw = state["messages"]
+        history = self._clean_history_for_llm(history_raw) 
+
+        messages_for_llm = base_sys + [context_msg] + history
+
+        llm, _ = self.initalize_llm_and_tools()
+        response = llm.invoke(messages_for_llm)
+
+        last_user = next(m for m in reversed(history) if isinstance(m, HumanMessage))
+        return {
+            "messages": [response],
+            "messages_history": [last_user, response]
+        }
+
+
+    def custom_tools_condition(self, state: ComplexState) -> str:
         tool_call_messages = [
             msg for msg in state["messages"]
             if isinstance(msg, AIMessage) and msg.additional_kwargs.get("tool_calls")
@@ -75,18 +133,127 @@ class Agent:
                     return tool_call["function"]["name"]
         return END
 
-    def create_graph(self) -> CompiledStateGraph:
-        agent_flow = StateGraph(State)
-        agent_flow.add_node("assistant", self.assistant)
+    def load_user_profile(self, state: ComplexState) -> Dict[str, Any]:
+        """
+        Graph-node: ensure `state.user` is present.
 
+        • If a profile is already stored in the checkpoint → return {} (no change).
+        • Otherwise read the `user_id` carried in the newest HumanMessage’s
+        metadata, fetch the profile from `self.user_db`, and return it
+        as a patch.  Because `user` uses the `merge_dicts` aggregator,
+        the profile will be *deep-merged* with any future updates.
+        """
+        # 1 — skip when we already have a profile (common case after first turn)
+        if state.get("user"):
+            return {}
+
+        # 2 — find the most-recent HumanMessage (it’s the one just injected)
+        last_msg = next(
+            (m for m in reversed(state["messages"]) if isinstance(m, HumanMessage)),
+            None,
+        )
+        if last_msg is None:                 # defensive: should never occur
+            return {}
+
+        user_id = last_msg.metadata.get("user_id", "anonymous")
+
+        # 3 — fetch the profile from the store (may be empty {})
+        profile = self.user_db.get_user_information_from_user_db(user_id) or {}
+        # guarantee the id is inside the profile so later prompts can reference it
+        profile.setdefault("user_id", user_id)
+
+        # 4 — return the patch; LangGraph will deep-merge it
+        return {"user": profile}
+
+    def extract_context(self, state: ComplexState) -> Dict[str, Any]:
+        """
+        Graph-node: pull situational facts from the *latest* HumanMessage
+        and patch them into `state.context`.
+
+        Currently implemented sources
+        -----------------------------
+        • `barcode`  – single str or list[str] in message.metadata
+        • `location` – optional str in message.metadata (e.g. store ID)
+        • automatic timestamp of the utterance
+
+        Behaviour
+        ---------
+        • If no new facts are found ➜ return {} (no state change).
+        • List-type values are *accumulated*: new items are appended to the
+        existing list (deduplicated) instead of overwritten.
+        • The node does **not** modify state in-place; it returns a patch.
+        """
+
+        # 1 — locate the most-recent HumanMessage
+        last_msg = next(
+            (m for m in reversed(state["messages"]) if isinstance(m, HumanMessage)),
+            None,
+        )
+        if last_msg is None:
+            return {}                     # defensive: should never happen
+
+        meta = last_msg.metadata or {}
+
+        # 2 — collect new context ------------------------------------
+        new_ctx: Dict[str, Any] = {}
+
+        # ── (a) Bar-codes → product objects -------------------------
+        barcode = meta.get("barcode")
+        if barcode:
+            mentioned: List[Dict[str, Any]] = []
+
+            if isinstance(barcode, str):
+                product = get_product_by_barcode(barcode)
+                if product:
+                    mentioned.append(product)
+
+            elif isinstance(barcode, list):
+                products = get_products_by_barcodes(barcode)    # may return dict
+                if products:
+                    if isinstance(products, dict):
+                        mentioned.extend(products.values())
+                    else:
+                        mentioned.extend(products)
+
+            if mentioned:
+                # accumulate with existing list (if any)
+                existing = state.get("context", {}).get("mentioned_products", [])
+                combined = {p["id"]: p for p in existing + mentioned}  # dedupe by id
+                new_ctx["mentioned_products"] = list(combined.values())
+                new_ctx["current_products"]   = mentioned              # focus set
+
+        # ── (b) Location -------------------------------------------
+        if "location" in meta:
+            new_ctx["location"] = meta["location"]
+
+        # ── (c) Timestamp ------------------------------------------
+        new_ctx["last_message_utc"] = datetime.datetime.utcnow().isoformat()
+
+        # 3 — return patch or empty dict -----------------------------
+        return {"context": new_ctx} if new_ctx else {}
+
+
+    def create_graph(self) -> CompiledStateGraph:
+
+        agent_flow = StateGraph(ComplexState)
+        agent_flow.add_node("load_user_profile", self.load_user_profile)
+        agent_flow.add_node("extract_context",   self.extract_context)
+        agent_flow.add_node("assistant", self.assistant)
+        
+        # External Tools
         rag_tool = get_retriever_tool("retrieve_products")
         stock_tool = get_tool("fetch_product_stock")
-
         agent_flow.add_node("retrieve_products", ToolNode([rag_tool]))
         agent_flow.add_node("fetch_product_stock", ToolNode([stock_tool]))
+
+        # Summarization
         agent_flow.add_node(summarize_conversation)
 
-        agent_flow.set_entry_point("assistant")
+        agent_flow.set_entry_point("load_user_profile")
+        agent_flow.add_edge("load_user_profile", "extract_context")
+        agent_flow.add_edge("extract_context",   "assistant")
+
+        # agent_flow.set_entry_point("assistant")
 
         agent_flow.add_conditional_edges(
             "assistant",
@@ -114,7 +281,7 @@ class Agent:
         cp = get_checkpoint(type="firestore")
 
         graph = agent_flow.compile(checkpointer=cp)
-
+       
         return graph
 
     def get_graph(self, force_new=False) -> CompiledStateGraph:
@@ -122,7 +289,7 @@ class Agent:
             self.graph = self.create_graph()
         return self.graph
 
-    def show_history(self, state: State):
+    def show_history(self, state: ComplexState):
         history = state.values.get("messages_history", [])
         for m in history:
             if isinstance(m, AIMessage):
@@ -132,21 +299,7 @@ class Agent:
             else:
                 print(f"System: {m.content}\n")
 
-    # def get_messages_by_thread_id(self, thread_id: str):
-    #     graph = self.get_graph()
-    #     config = {"configurable": {"thread_id": thread_id}}
-    #     state = graph.get_state(config)
 
-    #     messages = state.values.get("messages_history") or state.values.get("messages", [])
-    #     messages_content = []
-    #     for msg in messages:
-    #         if msg.content == "":
-    #             continue
-    #         if isinstance(msg, AIMessage):
-    #             messages_content.append({"role": "assistant", "content": msg.content, "img": None})
-    #         elif isinstance(msg, HumanMessage):
-    #             messages_content.append({"role": "user", "content": msg.content, "img": None})
-    #     return messages_content
     def get_messages_by_thread_id(self, thread_id: str) -> List[Dict[str, Any]]:
 
         graph = self.get_graph()
@@ -161,6 +314,9 @@ class Agent:
         for msg in messages:
             if isinstance(msg, RemoveMessage) or isinstance(msg, ToolMessage):
                 continue
+            # TEST: Filter out internal messages -> if success merge with if above
+            if msg.additional_kwargs.get("internal"):
+                continue            
             raw = msg.content
             if not raw:
                 continue
@@ -217,16 +373,62 @@ class Agent:
             messages_content.append(entry)
 
         return messages_content
-    def create_graph_input(self, user_id: str, msg: str, state: StateSnapshot, images:list[str]=None) -> dict:
-        user_object = state.values.get("user", {})
-        if not user_object:
-            user_object = self.user_db.get_user_from_user_db(user_id)
 
-        msg_object = create_msg_with_img(msg, images) if images else HumanMessage(content=msg)
+    def create_additional_context(self, state: StateSnapshot, content: dict, user: dict) -> str:
+   
+        additional_context = {}
+        barcode = content.get("barcode", None)
+        if barcode:
+            if isinstance(barcode, str):
+                product = get_product_by_barcode(barcode)
+                ic(product)
+                if product:
+                    additional_context["mentioned_products"] = [product]
+                    additional_context["current_products"] = [product]
+            elif isinstance(barcode, list):
+                products = get_products_by_barcodes(barcode)
+                if products:
+                    additional_context["mentioned_products"] = list(products.values()) if isinstance(products, dict) else products
+                    additional_context["current_products"] = list(products.values()) if isinstance(products, dict) else products
 
-        return {"messages": [msg_object], "user": user_object}
+        return additional_context
+    def get_user_information(self, user: dict) -> dict:
+        user_id = user.get("user_id") if user else None
+        if not user_id:
+            user_id = "anonymous"
+        return self.user_db.get_user_information_from_user_db(user_id)
 
-    def chat(self, msg: str, images: list[str] = None, user_id: str = None, thread_id: str = None) -> Tuple[str, str]:
+    def create_graph_input(self,
+                        content: dict,
+                        user_id: str) -> dict:
+        """
+        Serialise the frontend payload into a single HumanMessage.
+        """
+        text   = content.get("msg", "")
+        images = content.get("images", [])
+        barcode = content.get("barcode")          # optional
+
+        msg = (
+            create_msg_with_img(text, images) if images
+            else HumanMessage(content=text)
+        )
+
+        # ➜ all identifiers / extra facts go into metadata
+        meta = {"user_id": user_id}
+        if barcode:
+            meta["barcode"] = barcode
+
+        msg = msg.copy(update={"metadata": meta})
+
+        return {"messages": [msg]}
+
+    # def chat(self, msg: str, images: list[str] = None, user_id: str = None, thread_id: str = None) -> Tuple[str, str]:
+    def chat(self, content: dict, user:dict=None) -> Tuple[str, str]:
+
+
+        user_id = user.get("user_id") if user else None
+        thread_id = user.get("thread_id") if user else None
+
         graph = self.get_graph()
         if not user_id:
             user_id = "anonymous"
@@ -235,8 +437,9 @@ class Agent:
             self.user_db.add_thread_to_user_db(thread_id, user_id)
 
         config = {"configurable": {"thread_id": thread_id}}
-        state = graph.get_state(config)
-        graph_input = self.create_graph_input(user_id, msg, state, images)
+  
+     
+        graph_input = self.create_graph_input(content, user_id)
 
         result = graph.invoke(graph_input, config)
         return result["messages"][-1].content, thread_id

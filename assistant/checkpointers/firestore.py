@@ -5,9 +5,10 @@ from typing import Any
 from urllib.parse import urlparse
 from langchain.schema import HumanMessage, AIMessage
 from langgraph_checkpoint_firestore.firestoreSaver import FirestoreSaver
-from agent.firebase_utils import get_storage_bucket
+from assistant.utils.firebase_utils import get_storage_bucket
 from langgraph.checkpoint.base import CheckpointTuple
 from icecream import ic
+from typing import Optional
 class FirebaseImageFirestoreSaver(FirestoreSaver):
     def __init__(
         self,
@@ -183,3 +184,8 @@ class FirebaseImageFirestoreSaver(FirestoreSaver):
     #         parent_config=saved.parent_config,
     #         pending_writes=saved.pending_writes
     #     )
+
+def get_firestore_checkpoint(project_id: Optional[str]=None) -> FirebaseImageFirestoreSaver:
+    project_id = "inverbio-8342a" if project_id is None else project_id # Default project ID for dev
+    memory = FirebaseImageFirestoreSaver(project_id=project_id, checkpoints_collection='checkpoints', writes_collection='writes')
+    return memory

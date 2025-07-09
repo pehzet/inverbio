@@ -1,5 +1,5 @@
 from langchain_core.tools import tool
-from agent.farmely_api import fetch_product_stock_api
+from assistant.farmely_api import fetch_product_stock_api
 import json
 import os
 def _get_product_id_by_name(product_name: str) -> str:

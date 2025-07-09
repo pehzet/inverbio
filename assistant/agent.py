@@ -3,41 +3,43 @@ print(os.environ.get("INVERBIO_ENV"))
 if os.environ.get("INVERBIO_ENV") == "dev":
     import sys
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    from agent.env_check import load_and_check_env
+    from assistant.utils.env_check import load_and_check_env
     load_and_check_env()
 
 from langchain_openai import ChatOpenAI
-from agent.llm_factory import get_llm
-from agent.image_utils import create_msg_with_img
+from assistant.llm_factory import get_llm
+from assistant.image_utils import create_msg_with_img
 from langgraph.prebuilt import ToolNode, tools_condition
-from agent.state import ComplexState, get_checkpoint, get_value_from_state
-from agent.summary import check_summary, summarize_conversation
+from assistant.state import ComplexState, get_checkpoint, get_value_from_state
+from assistant.summary import check_summary, summarize_conversation
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.state import CompiledStateGraph
 from langchain_core.messages import AIMessage, SystemMessage, HumanMessage, RemoveMessage, ToolMessage
 from langchain_core.prompts import PromptTemplate, ChatPromptTemplate
-from agent.utils import render_graph_to_image
+
 import uuid
 from typing import Tuple
-from agent.user_management import get_user_db
+from assistant.user.database import get_user_db
 from langsmith import Client
-from agent.tools import get_farmely_tools, get_retriever_tool, get_tool
+from assistant.tools import get_farmely_tools, get_retriever_tool, get_tool
 import json
 from langgraph.types import StateSnapshot
-from agent.image_utils import _encode_image, _decode_image
+from assistant.image_utils import _encode_image, _decode_image
 from typing import List, Dict, Any, Literal
 import requests
 import time
 import datetime
 from icecream import ic
-
+from assistant.agent_config import AgentConfig
 from barcode.barcode import get_product_by_barcode, get_products_by_barcodes
 
 class Agent:
-    def __init__(self, db_source: str = "firestore"):
+    def __init__(self, config:AgentConfig = None):
+        self.config = config or AgentConfig.as_default()
         self.graph = None
-        self.user_db = get_user_db(db_source)
+        self.user_db = get_user_db(self.config.get("user_db", "sqlite"), data_source_from_env=True)
         self.langsmith_client = Client()
+
 
     def get_langsmith_client(self) -> Client:
         return self.langsmith_client
@@ -46,7 +48,9 @@ class Agent:
         return self.langsmith_client.pull_prompt(prompt_identifier)
 
     def initalize_llm_and_tools(self):
-        llm: ChatOpenAI = get_llm("openai", "gpt-4o-mini")
+        llm_provider = self.config.get("llm_provider", "openai")
+        llm_model = self.config.get("llm_model", "gpt-4o-mini")
+        llm: ChatOpenAI = get_llm(llm_provider, llm_model)
         tools = get_farmely_tools()
         llm = llm.bind_tools(tools)
         return llm, tools
@@ -182,7 +186,7 @@ class Agent:
         user_id = last_msg.metadata.get("user_id", "anonymous")
 
         # 3 — fetch the profile from the store (may be empty {})
-        profile = self.user_db.get_user_information_from_user_db(user_id) or {}
+        profile = self.user_db.get_user(user_id) or {}
         # guarantee the id is inside the profile so later prompts can reference it
         profile.setdefault("user_id", user_id)
 
@@ -265,7 +269,7 @@ class Agent:
         agent_flow.add_node("assistant", self.assistant)
         
         # External Tools
-        rag_tool = get_retriever_tool("retrieve_products")
+        rag_tool = get_retriever_tool("retrieve_products", "chroma", chroma_dir="chroma_db")
         stock_tool = get_tool("fetch_product_stock")
         agent_flow.add_node("retrieve_products", ToolNode([rag_tool]))
         agent_flow.add_node("fetch_product_stock", ToolNode([stock_tool]))
@@ -302,7 +306,7 @@ class Agent:
         )
         agent_flow.add_edge("summarize_conversation", END)
     
-        cp = get_checkpoint(type="firestore")
+        cp = get_checkpoint(type=self.config.get("checkpoint_type", "sqlite"))
 
         graph = agent_flow.compile(checkpointer=cp)
        
@@ -399,21 +403,17 @@ class Agent:
         return messages_content
 
     def create_additional_context(self, state: StateSnapshot, content: dict, user: dict) -> str:
-   
         additional_context = {}
         barcode = content.get("barcode", None)
         if barcode:
             if isinstance(barcode, str):
-                product = get_product_by_barcode(barcode)
-                if product:
-                    additional_context["mentioned_products"] = [product]
-                    additional_context["current_products"] = [product]
-            elif isinstance(barcode, list):
+                products = get_product_by_barcode(barcode)
+                products = [products] if products else []
+            else:
                 products = get_products_by_barcodes(barcode)
-                if products:
-                    additional_context["mentioned_products"] = list(products.values()) if isinstance(products, dict) else products
-                    additional_context["current_products"] = list(products.values()) if isinstance(products, dict) else products
-
+            if products:
+                additional_context["mentioned_products"] = products.values() if isinstance(products, dict) else products
+                additional_context["current_products"] = products.values() if isinstance(products, dict) else products
         return additional_context
     def get_user_information(self, user: dict) -> dict:
         user_id = user.get("user_id") if user else None
@@ -457,7 +457,7 @@ class Agent:
             user_id = "anonymous"
         if not thread_id:
             thread_id = f"{user_id}-{uuid.uuid4()}"
-            self.user_db.add_thread_to_user_db(thread_id, user_id)
+            self.user_db.add_thread(thread_id, user_id)
 
         config = {"configurable": {"thread_id": thread_id}}
   

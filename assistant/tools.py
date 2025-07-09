@@ -1,11 +1,11 @@
 from langchain.tools import Tool
-from agent.rag_factory import get_vector_store_firestore
+from assistant.rag_factory import get_vector_store
 from langchain.tools.retriever import create_retriever_tool
 from langgraph.prebuilt import ToolNode
-from agent.farmely_api_langchain import fetch_product_stock
-def get_retriever_tool(tool_name:str) -> Tool:
+from assistant.farmely_api_langchain import fetch_product_stock
+def get_retriever_tool(tool_name:str, db:str, **kwargs) -> Tool:
     if tool_name == "retrieve_products":
-        retriever = get_vector_store_firestore("products")
+        retriever = get_vector_store(db, **kwargs)
         retriever_tool = create_retriever_tool(
             retriever,
             "retrieve_products",
@@ -17,10 +17,10 @@ def get_retriever_tool(tool_name:str) -> Tool:
 
 
 
-def get_tool(name:str) -> Tool:
+def get_tool(name:str, **kwargs) -> Tool:
 
     if name == "retrieve_products":
-        return get_retriever_tool(name)
+        return get_retriever_tool(name, **kwargs)
     elif name == "fetch_product_stock":
         return fetch_product_stock
     else:
@@ -28,7 +28,7 @@ def get_tool(name:str) -> Tool:
     
 def get_farmely_tools() -> list[Tool]:
     tools = [
-        get_tool("retrieve_products"),
+        get_tool("retrieve_products", db="chroma"),
         get_tool("fetch_product_stock"),
     ]
     return tools

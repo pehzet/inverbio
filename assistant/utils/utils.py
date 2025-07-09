@@ -9,8 +9,6 @@ def render_graph_to_image(graph, output_path="graph.png",):
     print(f"Graph image saved to {output_path}")
 
 
-
-
 def merge_dicts(old: Optional[Dict[str, Any]],
                 new: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     """

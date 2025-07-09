@@ -1,7 +1,7 @@
 from langgraph.graph import StateGraph, START, END
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import AIMessage, SystemMessage, HumanMessage, RemoveMessage
-from agent.state import ComplexState
+from assistant.state import ComplexState
 
 def check_summary(state: ComplexState):
     messages = state["messages"]

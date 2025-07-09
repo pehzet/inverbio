@@ -3,12 +3,12 @@ print(os.environ.get("INVERBIO_ENV"))
 if os.environ.get("INVERBIO_ENV") == "dev":
     import sys
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    from agent.env_check import load_and_check_env
+    from assistant.utils.env_check import load_and_check_env
     load_and_check_env()
 from typing import List, Union
 
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
-from agent.assistant_cls import Agent
+from assistant.agent import Agent
 # 1. Graph mit InMemory-Saver kompilieren (ersetzt InMemorySaver bei Bedarf durch deinen Postgres/Sqlite-Saver)
 from icecream import ic
 

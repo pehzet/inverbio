@@ -6,10 +6,10 @@ from firebase_admin import initialize_app
 import json
 import os
 import time
-from agent.assistant_cls import Agent
+from assistant.agent import Agent
 from icecream import ic
 if os.environ.get("INVERBIO_ENV") == "dev":
-    from agent.env_check import load_and_check_env
+    from assistant.env_check import load_and_check_env
     load_and_check_env()
 else:
     initialize_app()

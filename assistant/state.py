@@ -8,8 +8,12 @@ from langgraph_checkpoint_firestore import FirestoreSaver,FirestoreSerializer
 import os
 import json
 from typing import Any, Optional, Union, Literal
-from agent.saver import FirebaseImageFirestoreSaver
-from agent.utils import merge_dicts
+from assistant.checkpointers.firestore import FirebaseImageFirestoreSaver
+from assistant.checkpointers.sqlite import get_sqlite_checkpoint
+from assistant.checkpointers.firestore import get_firestore_checkpoint
+from assistant.checkpointers.mysql import get_mysql_checkpoint
+from assistant.checkpointers.postgres import get_postgres_checkpoint
+from assistant.utils.utils import merge_dicts
 class ComplexState(MessagesState):
     summary: str
     messages_history: Annotated[list[AnyMessage], add_messages]
@@ -19,27 +23,47 @@ class ComplexState(MessagesState):
 def get_state():
     return ComplexState()
 
-def get_checkpoint(type:Literal["sqlite", "firestore"]) -> Union[SqliteSaver, FirestoreSaver]:
+def check_checkpoint_env_vars(type:str) -> bool:
+    if type== "firestore":
+        project_id_var = "FIRESTORE_PROJECT_ID"
+        if not os.getenv(project_id_var):
+            raise ValueError(f"Environment variable '{project_id_var}' is not set.")
+    if type == "sqlite":
+        db_path_var = "SQLITE_DB_PATH"
+        if not os.getenv(db_path_var):
+            raise ValueError(f"Environment variable '{db_path_var}' is not set.")
+    # rest of the types use user, password and host
+    user_var = f"{type.upper()}_USER"
+    password_var = f"{type.upper()}_PASSWORD"
+    host_var = f"{type.upper()}_HOST"
+    checkpoint_db_var = f"{type.upper()}_CHECKPOINT_DB"
+    if not os.getenv(checkpoint_db_var):
+        raise ValueError(f"Environment variable '{checkpoint_db_var}' is not set.")
+    if not os.getenv(user_var):
+        raise ValueError(f"Environment variable '{user_var}' is not set.")
+
+    if not os.getenv(password_var):
+        raise ValueError(f"Environment variable '{password_var}' is not set.")
+
+    if not os.getenv(host_var):
+        raise ValueError(f"Environment variable '{host_var}' is not set.")
+    return True
+
+def get_checkpoint(type:Literal["sqlite", "firestore", "mysql", "postgres"]) -> Union[SqliteSaver, FirestoreSaver]:
+    if not check_checkpoint_env_vars(type):
+        raise ValueError(f"Environment variables for '{type}' checkpoint are not set.")
     if type == "sqlite":
         return get_sqlite_checkpoint()
     elif type == "firestore":
         return get_firestore_checkpoint()
+    elif type == "mysql":
+        return get_mysql_checkpoint()
+    elif type == "postgres":
+        return get_postgres_checkpoint()
     else:
         raise ValueError(f"Checkpoint type '{type}' not recognized.")
 
-def get_firestore_checkpoint():
-    # memory = FirestoreSaver(project_id="inverbio-8342a", checkpoints_collection='checkpoints', writes_collection='writes')
-    memory = FirebaseImageFirestoreSaver(project_id="inverbio-8342a", checkpoints_collection='checkpoints', writes_collection='writes')
-    return memory
 
-def get_sqlite_checkpoint():
-    db_path = "state_db/example.db"
-    if not os.path.exists(db_path):
-        os.makedirs(os.path.dirname(db_path), exist_ok=True)
-
-    conn = sqlite3.connect(db_path, check_same_thread=False)
-    memory = SqliteSaver(conn)
-    return memory
 def get_value_from_state(state: dict, key: str, default: Any = None) -> Any:
     """Recursively search for a key in the state dictionary and return its value.
     If the key is not found, return the default value.

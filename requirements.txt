@@ -16,3 +16,4 @@ icecream
 langgraph-checkpoint-postgres
 langgraph-checkpoint-mysql[pymysql]
 psycopg
+pypdf

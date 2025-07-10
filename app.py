@@ -1,18 +1,25 @@
-import os, json, time
+import os
+from pathlib import Path
+is_production = os.environ.get("INVERBIO_ENV") == "prod" or os.environ.get("INVERBIO_ENV") == "production"
+if is_production:
+    from setup_utils import check_setup
+    req_var_file = Path("assistant/required_env_vars.txt")
+    check_setup(required_vars_file=req_var_file)
+else:
+    from assistant.utils.env_check import load_and_check_env
+    load_and_check_env()
+    from setup_utils import check_setup
+    check_setup(required_vars_file=Path("assistant/required_env_vars.txt")) # test
+
+import time
 from flask import Flask, request, jsonify, make_response
 from flask_cors import CORS     
 from assistant.agent import Agent
 from assistant.agent_config import AgentConfig
 from icecream import ic
 from barcode.barcode import get_product_by_barcode
-if os.getenv("INVERBIO_ENV") == "dev":
-    from assistant.env_check import load_and_check_env
-    load_and_check_env()
-else:
 
-    # from firebase_admin import initialize_app
-    # initialize_app()
-    pass
+
 
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})      # Access-Control-Allow-Origin: *
@@ -23,16 +30,12 @@ agent = Agent(agent_config)
 def chat():
 
     data = request.get_json(silent=True) or {}
-    if "msg" not in data:
-        return jsonify(error="Parameter 'msg' ist erforderlich."), 400
+    content = data.get("content", None)
+    if not content or content.get("msg") is None:
+        return jsonify(error="Parameter 'content' with 'msg' is required."), 400
+    user = data.get("user", {})
 
-    msg       = data.get("msg")
-    img       = data.get("img")
-    user_id   = data.get("user_id")
-    thread_id = data.get("thread_id")
-
-   
-    answer, thread_id = agent.chat(msg, img, user_id, thread_id)
+    answer, thread_id = agent.chat(content, user)
 
     return jsonify(response=answer, thread_id=thread_id), 200
 
@@ -70,3 +73,8 @@ def get_product_by_barcode_route():
         return jsonify(exists=False, product_info={}), 404
 
     return jsonify(exists=True, product_info=product_info), 200
+
+
+if __name__ == "__main__":
+    os.environ["INVERBIO_ENV"] = "dev"  # Set environment variable for development
+    app.run()

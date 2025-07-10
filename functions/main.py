@@ -9,7 +9,7 @@ import time
 from assistant.agent import Agent
 from icecream import ic
 if os.environ.get("INVERBIO_ENV") == "dev":
-    from assistant.env_check import load_and_check_env
+    from assistant.utils.env_check import load_and_check_env
     load_and_check_env()
 else:
     initialize_app()

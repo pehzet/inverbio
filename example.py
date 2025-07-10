@@ -2,6 +2,22 @@ from assistant.agent import Agent
 from assistant.agent_config import AgentConfig
 from assistant.utils.env_check import load_and_check_env
 
+# Python as usual: import necessary modules
+"""
+install the requirements.txt file with pip:
+```bash
+pip install -r requirements.txt
+```
+This will install all necessary dependencies for the Agent to work.
+You can also use a virtual environment to keep the dependencies isolated.
+
+Further you need to setup your database. We support SQLite, PostgreSQL, MySQL as classic SQL Databases, but also Firebase Firestore.
+These are needed to store the Chat Stuff and the User Data.
+For the RAG (Retrieval Augmented Generation) we use ChromaDB and Firestore (with Vectorization), which are vector databases.
+Maybe we will add more vector databases in the future, but for now these must be enough.
+
+"""
+
 # Set up environment
 """
 We need to load and check the environment variables before using the Agent.
@@ -58,6 +74,18 @@ It works stateless. The history is saved in the database. Identified by the thre
 The thread_id contains is a {user_id}-{uuid} format.
 If no user_id is provided, it will use the anonymous user.
 """
+# start a conversation with the agent
+"""
+You can start a conversation with the agent by calling the `chat` method.
+The `chat` method takes two arguments:
+1. `content`: a dictionary containing the message and optional images or barcode.
+2. `user`: a dictionary containing the user_id and thread_id. If no user_id is provided, it will use the anonymous user.
+The `content` dictionary should contain the following keys:
+- `msg`: the message to send to the agent.
+- `images`: a list of images to send to the agent (optional).
+- `barcode`: the barcode to send to the agent (optional).
+"""
+
 content = {
     "msg": "Hallo, wie kann ich dir helfen?",
     "images": [],
@@ -67,3 +95,12 @@ user = {
     "user_id": None,
     "thread_id": None,
 }
+response, thread_id = agent.chat(content=content, user=user)
+"""
+The response is a dictionary with the following structure:
+{
+    "response": "The answer from the agent",
+    "thread_id": "the thread_id of the conversation"
+}
+You can use the thread_id to continue the conversation later.
+"""

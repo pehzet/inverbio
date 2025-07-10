@@ -16,6 +16,12 @@ class SQLiteUserSQL(UserSQL):
     @property
     def timestamp_default(self) -> str:   # identisch für SQLite
         return "CURRENT_TIMESTAMP"
+    @property
+    def short_text_type(self) -> str:    
+        return "TEXT"
+    @property
+    def long_text_type(self) -> str:     
+        return "TEXT"
 
     #   connect
     def _connect(self):

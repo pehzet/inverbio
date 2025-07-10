@@ -11,6 +11,7 @@ def _create_postgres_connection(host:str=None, user:str=None, password:str=None)
     pg_host = host or os.getenv("POSTGRES_HOST", "localhost")
     pg_user = user or os.getenv("POSTGRES_USER")
     pg_pwd = password or os.getenv("POSTGRES_PASSWORD")
+    pg_db = os.getenv("POSTGRES_STATE_DB", "user")  # Standard-Datenbank für User
     if pg_pwd is None:
         raise ValueError("POSTGRES_PASSWORD environment variable is not set.")
 
@@ -19,9 +20,9 @@ def _create_postgres_connection(host:str=None, user:str=None, password:str=None)
         port=5432,
         user=pg_user,
         password=pg_pwd,
-        dbname="langgraph",       
-        autocommit=True,          
-        row_factory=dict_row     
+        dbname=pg_db,
+        autocommit=True,
+        row_factory=dict_row
     )
 
 def setup_postgres_saver() -> PostgresSaver:

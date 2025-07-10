@@ -71,7 +71,6 @@ def get_user_db(type: Literal["sqlite", "firestore", "mysql", "postgres"] = "sql
         if not check_user_db_env_vars(type):
             raise ValueError(f"Environment variables for '{type}' user database are not set.")
         data_source_name = get_data_source_from_env(type)
-    ic(data_source_name)
     if type == "sqlite":
         return SQLiteUserSQL(data_source_name)
     elif type == "firestore":

@@ -36,7 +36,7 @@ def check_checkpoint_env_vars(type:str) -> bool:
     user_var = f"{type.upper()}_USER"
     password_var = f"{type.upper()}_PASSWORD"
     host_var = f"{type.upper()}_HOST"
-    checkpoint_db_var = f"{type.upper()}_CHECKPOINT_DB"
+    checkpoint_db_var = f"{type.upper()}_STATE_DB"
     if not os.getenv(checkpoint_db_var):
         raise ValueError(f"Environment variable '{checkpoint_db_var}' is not set.")
     if not os.getenv(user_var):

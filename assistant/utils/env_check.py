@@ -2,22 +2,20 @@ import os
 import getpass
 from dotenv import load_dotenv
 from icecream import ic
+from pathlib import Path
 def _set_env(var: str):
     if not os.environ.get(var):
         os.environ[var] = getpass.getpass(f"Set value for {var}: ")
 
-def load_and_check_env(env_file: str = ".env_vars", required_vars_file: str = "required_env_vars.txt"):
-    # Load environment variables from .env file
-    parent_dir = os.path.dirname(os.path.abspath(__file__))
-    root_dir = os.path.dirname(parent_dir)  # Go up one level to the project root
-    env_file = os.path.join(root_dir, env_file)
-
+def load_and_check_env(env_file: str = Path(".env_vars"), required_vars_file: str = Path("required_env_vars.txt")):
+    current_dir = Path(__file__).parent
+    root_dir = current_dir.parent
+    env_file = root_dir / env_file
+    required_vars_file = root_dir / required_vars_file
+    print(f"Loading environment variables from {env_file}")
     load_dotenv(env_file)
 
-    # Load required variables
     try:
-        required_vars_file = os.path.join(root_dir, required_vars_file)
-
         with open(required_vars_file) as f:
             required_vars = [line.strip() for line in f if line.strip() and not line.startswith("#")]
     except FileNotFoundError:

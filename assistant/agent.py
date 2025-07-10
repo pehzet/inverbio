@@ -1,10 +1,5 @@
 import os
-print(os.environ.get("INVERBIO_ENV"))
-if os.environ.get("INVERBIO_ENV") == "dev":
-    import sys
-    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    from assistant.utils.env_check import load_and_check_env
-    load_and_check_env()
+
 
 from langchain_openai import ChatOpenAI
 from assistant.llm_factory import get_llm
@@ -16,7 +11,7 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.graph.state import CompiledStateGraph
 from langchain_core.messages import AIMessage, SystemMessage, HumanMessage, RemoveMessage, ToolMessage
 from langchain_core.prompts import PromptTemplate, ChatPromptTemplate
-
+from pathlib import Path
 import uuid
 from typing import Tuple
 from assistant.user.database import get_user_db
@@ -269,7 +264,8 @@ class Agent:
         agent_flow.add_node("assistant", self.assistant)
         
         # External Tools
-        rag_tool = get_retriever_tool("retrieve_products", "chroma", chroma_dir="chroma_db")
+        chroma_dir = Path(os.getenv("CHROMA_PRODUCT_DB", "chroma_db"))
+        rag_tool = get_retriever_tool("retrieve_products", "chroma", chroma_dir=chroma_dir)
         stock_tool = get_tool("fetch_product_stock")
         agent_flow.add_node("retrieve_products", ToolNode([rag_tool]))
         agent_flow.add_node("fetch_product_stock", ToolNode([stock_tool]))

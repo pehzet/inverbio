@@ -1,9 +1,13 @@
 import os
 from pathlib import Path
 is_production = os.environ.get("INVERBIO_ENV") == "prod" or os.environ.get("INVERBIO_ENV") == "production"
+BASE_DIR = Path(__file__).resolve().parent          # /home/.../backend
+print("Base dir:", BASE_DIR)
 if is_production:
     from setup_utils import check_setup
-    req_var_file = Path("assistant/required_env_vars.txt")
+    BASE_DIR = Path(__file__).resolve().parent          # /home/.../backend
+    print("Base dir:", BASE_DIR)
+    req_var_file = BASE_DIR / "assistant" / "required_env_vars.txt"
     check_setup(required_vars_file=req_var_file)
 else:
     from assistant.utils.env_check import load_and_check_env
@@ -12,8 +16,8 @@ else:
     check_setup(required_vars_file=Path("assistant/required_env_vars.txt")) # test
 
 import time
-from flask import Flask, request, jsonify, make_response
-from flask_cors import CORS     
+from flask import Flask, request, jsonify
+from flask_cors import CORS
 from assistant.agent import Agent
 from assistant.agent_config import AgentConfig
 from icecream import ic

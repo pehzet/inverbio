@@ -12,12 +12,13 @@ def _create_postgres_connection(host:str=None, user:str=None, password:str=None)
     pg_user = user or os.getenv("POSTGRES_USER")
     pg_pwd = password or os.getenv("POSTGRES_PASSWORD")
     pg_db = os.getenv("POSTGRES_STATE_DB", "user")  # Standard-Datenbank für User
+    pg_port = os.getenv("POSTGRES_PORT", "14678")
     if pg_pwd is None:
         raise ValueError("POSTGRES_PASSWORD environment variable is not set.")
 
     return Connection.connect(
         host=pg_host,
-        port=5432,
+        port=pg_port,
         user=pg_user,
         password=pg_pwd,
         dbname=pg_db,
@@ -33,7 +34,7 @@ def setup_postgres_saver() -> PostgresSaver:
 
 def get_postgres_checkpoint(setup: bool = False) -> PostgresSaver:
     """
-    Gibt einen PostgresSaver zurück. 
+    Gibt einen PostgresSaver zurück.
     Wenn setup=True, wird vorher .setup() aufgerufen.
     """
     if setup:

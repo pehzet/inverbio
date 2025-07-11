@@ -18,7 +18,7 @@ else:
     check_setup(required_vars_file=Path("assistant/required_env_vars.txt")) # test
 
 import time
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory, abort
 from flask_cors import CORS
 from assistant.agent import Agent
 from assistant.agent_config import AgentConfig
@@ -28,6 +28,7 @@ API_KEY = os.environ.get("INVERBIO_API_KEY")
 
 
 app = Flask(__name__)
+DIST_DIR = "/home/nmeseth/inverbio/frontend/dist" # TODO: add to env var
 CORS(app, 
      resources={r"/*": {"origins": "*"}},
      allow_headers=["Content-Type", "X-API-Key"]
@@ -51,11 +52,27 @@ def require_api_key(route_func):
 
 agent_config = AgentConfig.as_default()
 agent = Agent(agent_config)
-@app.route("/chat", methods=["POST", "OPTIONS"])
+
+@app.route("/")
+def index():
+    return send_from_directory(DIST_DIR, "index.html")
+
+# optionaler SPA-Fallback, falls du später Unterseiten hast
+@app.route("/<path:path>")
+def spa_fallback(path):
+    if path.startswith("api/"):        # API-Routes weiterhin an Flask
+        abort(404)
+    return send_from_directory(DIST_DIR, "index.html")
+
+
+@app.route("/chat", methods=["POST"])
 @require_api_key
 def chat():
+  
     data = request.get_json(silent=True) or {}
+
     content = data.get("content", None)
+
     if not content or content.get("msg") is None:
         return jsonify(error="Parameter 'content' with 'msg' is required."), 400
     user = data.get("user", {})
@@ -64,7 +81,7 @@ def chat():
 
 
 
-@app.route("/messages", methods=["GET", "POST", "OPTIONS"])
+@app.route("/messages", methods=["GET", "POST"])
 @require_api_key
 def get_messages_by_thread_id():
 
@@ -85,7 +102,7 @@ def get_messages_by_thread_id():
 
     return jsonify(messages=messages), 200
 
-@app.route("/product_by_barcode", methods=["GET", "OPTIONS"])
+@app.route("/product_by_barcode", methods=["GET"])
 @require_api_key
 def get_product_by_barcode_route():
 

@@ -22,11 +22,14 @@ from assistant.agent import Agent
 from assistant.agent_config import AgentConfig
 from icecream import ic
 from barcode.barcode import get_product_by_barcode
-
+API_KEY = os.environ.get("INVERBIO_API_KEY")  
 
 
 app = Flask(__name__)
-CORS(app, resources={r"/*": {"origins": "*"}})      # Access-Control-Allow-Origin: *
+CORS(app, 
+     resources={r"/*": {"origins": "*"}},
+     allow_headers=["Content-Type", "X-API-Key"]
+     )     
 
 agent_config = AgentConfig.as_default()
 agent = Agent(agent_config)

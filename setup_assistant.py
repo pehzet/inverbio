@@ -1,0 +1,112 @@
+import os
+from typing import Literal, Union
+from pathlib import Path
+
+
+def setup():
+    check_if_env_vars_set(required_vars_file=Path("assistant/required_env_vars.txt"))
+    print("Environment variables are set. Proceeding with setup...")
+    setup_user_db("postgres")
+    setup_product_db("chroma")
+    setup_checkpoint_db("postgres")
+    print("Setup completed successfully.")
+
+def setup_user_db(db_type: Literal["sqlite","mysql","postgres"] = "postgres") -> None:
+    """Set up the user database based on the specified type.
+    Args:
+        db_type (Literal["sqlite", "mysql", "postgres"]): The type of database to set up.
+    """
+    if db_type == "sqlite":
+        raise NotImplementedError("SQLite setup is not implemented yet.")
+    elif db_type == "mysql":
+        raise NotImplementedError("MySQL setup is not implemented yet.")
+    elif db_type == "postgres":
+        from assistant.user.database import setup_user_db, get_data_source_from_env
+        data_source = get_data_source_from_env("postgres")
+        if setup_user_db(type="postgres", data_source=data_source):
+            print("PostgreSQL user database setup completed.")
+        else:
+            print("ERROR: Failed to set up PostgreSQL user database.")
+def setup_product_db(
+    db_type: Literal["chroma"] = "chroma",
+    ) -> None:
+    """Set up the product database based on the specified type.
+    Args:
+        db_type (Literal["chroma"]): The type of database to set up.
+    """
+    if db_type == "chroma":
+        from assistant.rag.setup import setup_product_db_chroma
+        if setup_product_db_chroma():
+            print("Chroma product database setup completed.")
+        else:
+            print("ERROR: Failed to set up Chroma product database.")
+
+def setup_checkpoint_db(
+    db_type: Literal["sqlite","mysql","postgres"] = "postgres",
+    ) -> None:
+    if db_type == "sqlite":
+        raise NotImplementedError("SQLite setup is not implemented yet.")
+    elif db_type == "mysql":
+        raise NotImplementedError("MySQL setup is not implemented yet.")
+    elif db_type == "postgresql":
+        from assistant.checkpointers.postgres import setup_postgres_saver
+        if setup_postgres_saver():
+            print("PostgreSQL checkpoint database setup completed.")
+        else:
+            print("ERROR: Failed to set up PostgreSQL checkpoint database.")
+
+def check_setup(required_vars_file: str = None, required_vars: list[str] = None) -> None:
+    check_if_env_vars_set(required_vars_file, required_vars)
+    # env vars are needed for the following checks
+    checks = [
+        check_if_chroma_db_exists,
+  
+    ]
+    for check in checks:
+        if not check():
+            raise RuntimeError(f"Setup check failed: {check.__name__}")
+    print("All setup checks passed.")
+
+def check_if_chroma_db_exists() -> bool:
+    """
+    Check if the Chroma vector store database exists.
+    """
+    chroma_dir = os.getenv("CHROMA_PRODUCT_DB")
+    if not chroma_dir:
+        return False
+    if not Path(chroma_dir).exists():
+        print(f"Chroma directory '{chroma_dir}' does not exist.")
+        return False
+    if not (Path(chroma_dir) / "chroma.sqlite3").exists():
+        print(f"Chroma database file '{chroma_dir}/chroma.sqlite3' does not exist.")
+        return False
+    return True
+
+def check_if_env_vars_set(required_vars_file: str = None, required_vars: list[str] = None) -> bool:
+    """
+    Check if all required environment variables are set.
+    """
+    if not required_vars and not required_vars_file:
+        raise ValueError("Either 'required_vars' or 'required_vars_file' must be provided.")
+    if required_vars_file:
+        try:
+            with open(required_vars_file) as f:
+                required_vars = [line.strip() for line in f if line.strip() and not line.startswith("#")]
+        except FileNotFoundError:
+            raise FileNotFoundError(f"{required_vars_file} not found.")
+
+    for var in required_vars:
+        if not os.getenv(var):
+            print(f"Environment variable '{var}' is not set.")
+            return False
+    return True
+
+
+
+if __name__ == "__main__":
+    try:
+        setup()
+    except Exception as e:
+        print(f"Setup failed: {e}")
+        exit(1)
+    print("Setup completed successfully.")

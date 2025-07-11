@@ -4,7 +4,7 @@ is_production = os.environ.get("INVERBIO_ENV") == "prod" or os.environ.get("INVE
 BASE_DIR = Path(__file__).resolve().parent          # /home/.../backend
 print("Base dir:", BASE_DIR)
 if is_production:
-    from setup_utils import check_setup
+    from setup_assistant import check_setup
     BASE_DIR = Path(__file__).resolve().parent          # /home/.../backend
     print("Base dir:", BASE_DIR)
     req_var_file = BASE_DIR / "assistant" / "required_env_vars.txt"
@@ -12,7 +12,7 @@ if is_production:
 else:
     from assistant.utils.env_check import load_and_check_env
     load_and_check_env()
-    from setup_utils import check_setup
+    from setup_assistant import check_setup
     check_setup(required_vars_file=Path("assistant/required_env_vars.txt")) # test
 
 import time

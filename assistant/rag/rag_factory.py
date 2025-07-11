@@ -11,7 +11,7 @@ def get_vector_store(db=Literal["firestore", "chroma"], **kwargs) :
         raise NotImplementedError("Firestore vector store is not implemented yet.")
         #return get_vector_store_firestore(kwargs.get("collection_name", "default_collection"))
     elif db == "chroma":
-        return get_vector_store_chroma(kwargs.get("chroma_dir", "chroma_db"))
+        return get_vector_store_chroma(kwargs.get("CHROMA_PRODUCT_DB", "chroma_db"))
     else:
         raise ValueError(f"Unsupported database type: {db}")
 

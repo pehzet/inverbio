@@ -160,7 +160,7 @@ class UserSQL(ABC):
         sql = (
             f"UPDATE threads "
             f"SET {identifier} = {self.placeholder}, "
-            f"    updated_at = {self.timestamp_default} "
+            f"updated_at = {self.timestamp_default} "
             f"WHERE thread_id = {self.placeholder}"
         )
         try:

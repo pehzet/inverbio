@@ -32,16 +32,14 @@ def setup_postgres_saver() -> PostgresSaver:
     saver.setup()               # einmalig Tabellen anlegen
     return saver
 
-def get_postgres_checkpoint(setup: bool = False) -> PostgresSaver:
+def get_postgres_checkpoint() -> PostgresSaver:
     """
-    Gibt einen PostgresSaver zurück.
-    Wenn setup=True, wird vorher .setup() aufgerufen.
+    Returns a PostgresSaver instance for checkpointing.
+    This function creates a connection to the PostgreSQL database and returns a PostgresSaver instance.
+    For Connection, env vars are used.
     """
-    if setup:
-        return setup_postgres_saver()
-    else:
-        conn = _create_postgres_connection()
-        return PostgresSaver(conn)
+    conn = _create_postgres_connection()
+    return PostgresSaver(conn)
 
 if __name__ == "__main__":
     cp = get_postgres_checkpoint()

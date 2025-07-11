@@ -2,7 +2,7 @@ import os
 from typing import Literal, Union
 from pathlib import Path
 from dotenv import load_dotenv
-
+import traceback
 def setup():
     env_var_path = Path("assistant/.env_vars")
     req_env_var_path = Path("assistant/required_env_vars.txt")
@@ -112,5 +112,6 @@ if __name__ == "__main__":
         setup()
     except Exception as e:
         print(f"Setup failed: {e}")
+        traceback.print_exc()
         exit(1)
     print("Setup completed successfully.")

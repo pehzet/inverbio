@@ -1,4 +1,4 @@
-from chroma import create_vector_store_chroma
+from assistant.rag.chroma import create_vector_store_chroma
 from pathlib import Path
 import os
 from icecream import ic

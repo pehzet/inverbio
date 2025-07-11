@@ -1,10 +1,12 @@
 import os
 from typing import Literal, Union
 from pathlib import Path
-
+from dotenv import load_dotenv
 
 def setup():
-    check_if_env_vars_set(required_vars_file=Path("assistant/required_env_vars.txt"))
+    env_var_path = Path("assistant/required_env_vars.txt")
+    load_dotenv(str(env_var_path))
+    check_if_env_vars_set(required_vars_file=str(env_var_path))
     print("Environment variables are set. Proceeding with setup...")
     setup_user_db("postgres")
     setup_product_db("chroma")
@@ -100,6 +102,7 @@ def check_if_env_vars_set(required_vars_file: str = None, required_vars: list[st
             print(f"Environment variable '{var}' is not set.")
             return False
     return True
+
 
 
 

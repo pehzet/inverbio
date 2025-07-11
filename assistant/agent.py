@@ -269,14 +269,12 @@ class Agent:
         stock_tool = get_tool("fetch_product_stock")
         agent_flow.add_node("retrieve_products", ToolNode([rag_tool]))
         agent_flow.add_node("fetch_product_stock", ToolNode([stock_tool]))
-
         # Summarization
         agent_flow.add_node(summarize_conversation)
-
         agent_flow.set_entry_point("load_user_profile")
         agent_flow.add_edge("load_user_profile", "extract_context")
         agent_flow.add_edge("extract_context",   "assistant")
-
+        
         # agent_flow.set_entry_point("assistant")
 
         agent_flow.add_conditional_edges(
@@ -301,11 +299,9 @@ class Agent:
             }
         )
         agent_flow.add_edge("summarize_conversation", END)
-    
         cp = get_checkpoint(type=self.config.get("checkpoint_type", "sqlite"))
 
         graph = agent_flow.compile(checkpointer=cp)
-       
         return graph
 
     def get_graph(self, force_new=False) -> CompiledStateGraph:
@@ -447,7 +443,6 @@ class Agent:
 
         user_id = user.get("user_id") if user else None
         thread_id = user.get("thread_id") if user else None
-
         graph = self.get_graph()
         if not user_id:
             user_id = "anonymous"
@@ -457,9 +452,7 @@ class Agent:
 
         config = {"configurable": {"thread_id": thread_id}}
   
-     
         graph_input = self.create_graph_input(content, user_id)
-
         result = graph.invoke(graph_input, config)
         return result["messages"][-1].content, thread_id
 

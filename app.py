@@ -54,15 +54,12 @@ agent = Agent(agent_config)
 @app.route("/chat", methods=["POST", "OPTIONS"])
 @require_api_key
 def chat():
-
     data = request.get_json(silent=True) or {}
     content = data.get("content", None)
     if not content or content.get("msg") is None:
         return jsonify(error="Parameter 'content' with 'msg' is required."), 400
     user = data.get("user", {})
-
     answer, thread_id = agent.chat(content, user)
-
     return jsonify(response=answer, thread_id=thread_id), 200
 
 

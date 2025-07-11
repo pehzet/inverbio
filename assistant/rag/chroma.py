@@ -110,7 +110,6 @@ def _split_recursive(text: str, chunk_size: int) -> List[Document]:
 def get_vector_store_chroma(chroma_dir: str, *, client: chromadb.Client | None = None):
     """Return a ``VectorStoreRetriever`` from an existing *chroma_dir*."""
     embeddings = OpenAIEmbeddings(model=TEXT_EMBEDDING_MODEL)
-
     persistent_client = client or chromadb.PersistentClient(path=str(chroma_dir))
     return Chroma(client=persistent_client, embedding_function=embeddings).as_retriever()
 

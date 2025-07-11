@@ -28,7 +28,7 @@ def get_tool(name:str, **kwargs) -> Tool:
     
 def get_farmely_tools() -> list[Tool]:
     tools = [
-        get_tool("retrieve_products", db="chroma"),
+        get_tool("retrieve_products", db="chroma", CHROMA_PRODUCT_DB="chroma_products"),
         get_tool("fetch_product_stock"),
     ]
     return tools

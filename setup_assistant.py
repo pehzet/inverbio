@@ -26,7 +26,7 @@ def setup_user_db(db_type: Literal["sqlite","mysql","postgres"] = "postgres") ->
     elif db_type == "postgres":
         from assistant.user.database import setup_user_db as _setup_user_db, get_data_source_from_env
         data_source = get_data_source_from_env("postgres")
-        if _setup_user_db(type="postgres", data_source=data_source):
+        if _setup_user_db(type="postgres", data_source_name=data_source):
             print("PostgreSQL user database setup completed.")
         else:
             print("ERROR: Failed to set up PostgreSQL user database.")

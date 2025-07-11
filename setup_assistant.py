@@ -51,7 +51,7 @@ def setup_checkpoint_db(
         raise NotImplementedError("SQLite setup is not implemented yet.")
     elif db_type == "mysql":
         raise NotImplementedError("MySQL setup is not implemented yet.")
-    elif db_type == "postgresql":
+    elif db_type == "postgres":
         from assistant.checkpointers.postgres import setup_postgres_saver
         if setup_postgres_saver():
             print("PostgreSQL checkpoint database setup completed.")

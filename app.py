@@ -1,4 +1,6 @@
 import os
+import secrets
+from functools import wraps
 from pathlib import Path
 is_production = os.environ.get("INVERBIO_ENV") == "prod" or os.environ.get("INVERBIO_ENV") == "production"
 BASE_DIR = Path(__file__).resolve().parent          # /home/.../backend
@@ -31,9 +33,26 @@ CORS(app,
      allow_headers=["Content-Type", "X-API-Key"]
      )     
 
+
+def require_api_key(route_func):
+    @wraps(route_func)
+    def wrapper(*args, **kwargs):
+        #  Preflight-Anfragen (OPTIONS) nicht blockieren:
+        if request.method == "OPTIONS":
+            return route_func(*args, **kwargs)
+
+        key = request.headers.get("X-API-Key")          # Header-Name frei wählbar
+        if key and secrets.compare_digest(key, API_KEY):
+            return route_func(*args, **kwargs)
+
+        return jsonify(error="Invalid or missing API key"), 401
+    return wrapper
+
+
 agent_config = AgentConfig.as_default()
 agent = Agent(agent_config)
 @app.route("/chat", methods=["POST", "OPTIONS"])
+@require_api_key
 def chat():
 
     data = request.get_json(silent=True) or {}
@@ -49,6 +68,7 @@ def chat():
 
 
 @app.route("/messages", methods=["GET", "POST", "OPTIONS"])
+@require_api_key
 def get_messages_by_thread_id():
 
     # POST -> JSON-Body, GET -> Query-Params
@@ -69,6 +89,7 @@ def get_messages_by_thread_id():
     return jsonify(messages=messages), 200
 
 @app.route("/product_by_barcode", methods=["GET", "OPTIONS"])
+@require_api_key
 def get_product_by_barcode_route():
 
     barcode = request.args.get("barcode")

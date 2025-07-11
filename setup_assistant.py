@@ -4,9 +4,10 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 def setup():
-    env_var_path = Path("assistant/required_env_vars.txt")
+    env_var_path = Path("assistant/.env_vars")
+    req_env_var_path = Path("assistant/required_env_vars.txt")
     load_dotenv(str(env_var_path))
-    check_if_env_vars_set(required_vars_file=str(env_var_path))
+    check_if_env_vars_set(required_vars_file=str(req_env_var_path))
     print("Environment variables are set. Proceeding with setup...")
     setup_user_db("postgres")
     setup_product_db("chroma")

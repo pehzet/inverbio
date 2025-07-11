@@ -57,6 +57,8 @@ def setup_checkpoint_db(
             print("PostgreSQL checkpoint database setup completed.")
         else:
             print("ERROR: Failed to set up PostgreSQL checkpoint database.")
+    else:
+        raise ValueError(f"Unsupported checkpoint database type: {db_type}")
 
 def check_setup(required_vars_file: str = None, required_vars: list[str] = None) -> None:
     check_if_env_vars_set(required_vars_file, required_vars)

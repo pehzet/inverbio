@@ -2,7 +2,9 @@ import sqlite3
 from pathlib import Path
 import json
 from typing import Iterable, List, Dict, Any
-PRODUCTS_DB_PATH = Path("C:/code/inverbio-langgraph/products_db/products.db")
+from icecream import ic
+import os
+PRODUCTS_DB_PATH = Path(os.environ.get("PRODUCT_DB_PATH", "products_db/products.db"))
 def _decode_row(row, parse_json: bool) -> Dict[str, Any]:
     d = dict(row)
     if parse_json:
@@ -27,6 +29,7 @@ def get_product_by_barcode(
     Returns:
         A dictionary with product details or None if not found.
     """
+
     with sqlite3.connect(db_path) as con:
         con.row_factory = sqlite3.Row           # Rows wie Dicts ansprechbar
         cur = con.execute(

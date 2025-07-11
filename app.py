@@ -76,7 +76,7 @@ def get_messages_by_thread_id():
     thread_id = data.get("thread_id")
 
     t0 = time.time()
-    agent = Agent()
+
     print(f"Agent initialized in {time.time() - t0:.2f}s")
 
     t0 = time.time()
@@ -93,11 +93,11 @@ def get_product_by_barcode_route():
     if not barcode:
         return jsonify(error="Parameter 'barcode' ist erforderlich."), 400
 
-    product_info = get_product_by_barcode(barcode)
-    if not product_info:
-        return jsonify(exists=False, product_info={}), 404
+    product = get_product_by_barcode(barcode)
+    if not product:
+        return jsonify(exists=False, product={}), 404
 
-    return jsonify(exists=True, product_info=product_info), 200
+    return jsonify(exists=True, product=product), 200
 
 
 if __name__ == "__main__":

@@ -39,7 +39,7 @@ from langchain.schema import Document
 from langchain_chroma import Chroma
 import sys
 from icecream import ic
-
+from chromadb.config import Settings
 from pypdf import PdfReader  
 
 TEXT_EMBEDDING_MODEL = "text-embedding-3-small"
@@ -110,7 +110,7 @@ def _split_recursive(text: str, chunk_size: int) -> List[Document]:
 def get_vector_store_chroma(chroma_dir: str, *, client: chromadb.Client | None = None):
     """Return a ``VectorStoreRetriever`` from an existing *chroma_dir*."""
     embeddings = OpenAIEmbeddings(model=TEXT_EMBEDDING_MODEL)
-    persistent_client = client or chromadb.PersistentClient(path=str(chroma_dir))
+    persistent_client = client or chromadb.PersistentClient(path=str(chroma_dir),settings=Settings(anonymized_telemetry=False))
     return Chroma(client=persistent_client, embedding_function=embeddings).as_retriever()
 
 

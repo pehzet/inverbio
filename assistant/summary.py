@@ -1,6 +1,6 @@
 from langgraph.graph import StateGraph, START, END
 from langchain_openai import ChatOpenAI
-from langchain_core.messages import AIMessage, SystemMessage, HumanMessage, RemoveMessage
+from langchain_core.messages import AIMessage, SystemMessage, HumanMessage, RemoveMessage, ToolMessage
 from assistant.state import ComplexState
 
 def check_summary(state: ComplexState):
@@ -8,6 +8,20 @@ def check_summary(state: ComplexState):
     if len(messages) > 20:
         return "summarize_conversation"
     return END
+
+def _clean_messages(messages):
+    clean_history = [
+        m for m in messages
+        if not (
+            # Assistant-Nachricht mit tool_calls?  --> raus
+            (isinstance(m, AIMessage) and m.additional_kwargs.get("tool_calls"))
+            # Reine Tool-Antwort?                  --> raus
+            or isinstance(m, ToolMessage)
+            # Schon zuvor als "gelöscht" markiert? --> raus
+            or isinstance(m, RemoveMessage)
+        )
+    ]
+    return clean_history
 
 def summarize_conversation(state: ComplexState):
     summary = state.get("summary", "")
@@ -18,8 +32,8 @@ def summarize_conversation(state: ComplexState):
         )
     else:
         summary_message = "Create a summary of the conversation above:"
-
-    messages = state["messages"] + [HumanMessage(content=summary_message)]
+    clean_history = _clean_messages(state["messages"])
+    messages = clean_history + [HumanMessage(content=summary_message)]
     llm = ChatOpenAI(model="gpt-4o-mini")
     response = llm.invoke(messages)
 

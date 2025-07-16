@@ -13,11 +13,8 @@ def _clean_messages(messages):
     clean_history = [
         m for m in messages
         if not (
-            # Assistant-Nachricht mit tool_calls?  --> raus
             (isinstance(m, AIMessage) and m.additional_kwargs.get("tool_calls"))
-            # Reine Tool-Antwort?                  --> raus
             or isinstance(m, ToolMessage)
-            # Schon zuvor als "gelöscht" markiert? --> raus
             or isinstance(m, RemoveMessage)
         )
     ]

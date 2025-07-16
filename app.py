@@ -2,6 +2,13 @@ import os
 import secrets
 from functools import wraps
 from pathlib import Path
+import base64 
+import io
+import json
+
+from PIL import Image 
+
+
 is_production = os.environ.get("INVERBIO_ENV") == "prod" or os.environ.get("INVERBIO_ENV") == "production"
 BASE_DIR = Path(__file__).resolve().parent          # /home/.../backend
 print("Base dir:", BASE_DIR)
@@ -25,8 +32,8 @@ from assistant.agent_config import AgentConfig
 from icecream import ic
 from barcode.barcode import get_product_by_barcode
 API_KEY = os.environ.get("INVERBIO_API_KEY")  
-
-
+MAX_SIDE   = 1280      # for image resize
+JPEG_QUAL  = 85        # for image resize
 app = Flask(__name__)
 DIST_DIR = "/home/nmeseth/inverbio/frontend/dist" # TODO: add to env var
 CORS(app, 
@@ -50,6 +57,19 @@ def require_api_key(route_func):
     return wrapper
 
 
+def _downscale_image(raw: bytes) -> bytes:
+    """ verkleinert Bild auf MAX_SIDE und JPEG_QUAL, sonst unverändert """
+    img = Image.open(io.BytesIO(raw))
+    if max(img.size) <= MAX_SIDE:
+        return raw
+    img.thumbnail((MAX_SIDE, MAX_SIDE), Image.LANCZOS)
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=JPEG_QUAL)
+    return buf.getvalue()
+
+def _files_to_b64(files):
+    pass
+
 agent_config = AgentConfig.as_default()
 agent = Agent(agent_config)
 
@@ -65,20 +85,59 @@ def spa_fallback(path):
     return send_from_directory(DIST_DIR, "index.html")
 
 
+# @app.route("/chat", methods=["POST"])
+# @require_api_key
+# def chat():
+  
+#     data = request.get_json(silent=True) or {}
+
+#     content = data.get("content", None)
+
+#     if not content or content.get("msg") is None:
+#         return jsonify(error="Parameter 'content' with 'msg' is required."), 400
+#     user = data.get("user", {})
+#     answer, thread_id = agent.chat(content, user)
+#     return jsonify(response=answer, thread_id=thread_id), 200
+
 @app.route("/chat", methods=["POST"])
 @require_api_key
 def chat():
-  
-    data = request.get_json(silent=True) or {}
+    ic(request.content_type)
+    ic(request)
+    ic(request.form.get("payload"))
+    if request.content_type and request.content_type.startswith("multipart/"):
+        payload_str = request.form.get("payload")
+        if not payload_str:
+            return jsonify(error="Form field 'payload' missing."), 400
 
-    content = data.get("content", None)
+        try:
+            data = json.loads(payload_str)
+        except json.JSONDecodeError:
+            return jsonify(error="Invalid JSON in 'payload'."), 400
 
-    if not content or content.get("msg") is None:
+        # Dateien → Base64‑Data‑URLs
+        images_b64 = []
+        for up in request.files.getlist("files"):
+            raw = up.read()
+            raw = _downscale_image(raw)           # optionales Resize
+            b64 = base64.b64encode(raw).decode()
+            images_b64.append(f"data:{up.mimetype};base64,{b64}")
+
+        # JSON‑Struktur beibehalten
+        data.setdefault("content", {}).setdefault("images", []).extend(images_b64)
+
+   
+    else:
+        data = request.get_json(silent=True) or {}
+
+ 
+    content = data.get("content") or {}
+    if content.get("msg") is None:
         return jsonify(error="Parameter 'content' with 'msg' is required."), 400
+
     user = data.get("user", {})
     answer, thread_id = agent.chat(content, user)
     return jsonify(response=answer, thread_id=thread_id), 200
-
 
 
 @app.route("/messages", methods=["GET", "POST"])

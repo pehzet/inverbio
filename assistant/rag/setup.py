@@ -9,6 +9,7 @@ def setup_product_db_chroma():
     This function creates a vector store using the specified file and directory.
     """
     BASE_DIR = os.environ.get("BASE_DIR", Path(__file__).resolve().parent.parent)
+    BASE_DIR = Path(BASE_DIR).resolve()
     ic(BASE_DIR)
     file_path = Path("data/products.md")
     file_path = BASE_DIR / file_path

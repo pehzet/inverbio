@@ -102,6 +102,7 @@ def check_if_chroma_db_exists() -> bool:
     Check if the Chroma vector store database exists.
     """
     BASE_DIR = os.environ.get("BASE_DIR", Path(__file__).parent)
+    BASE_DIR = Path(BASE_DIR).resolve()
     chroma_dir = os.getenv("CHROMA_PRODUCT_DB")
     chroma_dir = BASE_DIR / chroma_dir if chroma_dir else BASE_DIR / "chroma_products"
     if not chroma_dir:

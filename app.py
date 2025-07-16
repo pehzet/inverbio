@@ -10,7 +10,8 @@ from PIL import Image
 
 
 is_production = os.environ.get("INVERBIO_ENV") == "prod" or os.environ.get("INVERBIO_ENV") == "production"
-BASE_DIR = Path(__file__).resolve().parent          # /home/.../backend
+BASE_DIR = Path(__file__).parent
+os.environ["BASE_DIR"] = str(BASE_DIR)
 print("Base dir:", BASE_DIR)
 if is_production:
     from setup_assistant import check_setup
@@ -102,7 +103,6 @@ def spa_fallback(path):
 @app.route("/chat", methods=["POST"])
 @require_api_key
 def chat():
-    ic(request.content_type)
     ic(request)
     ic(request.form.get("payload"))
     if request.content_type and request.content_type.startswith("multipart/"):

@@ -29,7 +29,10 @@ def get_product_by_barcode(
     Returns:
         A dictionary with product details or None if not found.
     """
-
+    BASE_DIR = os.environ.get("BASE_DIR", Path(__file__).resolve().parent.parent)
+    db_path = BASE_DIR / db_path
+    if not db_path.exists():
+        raise FileNotFoundError(f"Database file '{db_path}' does not exist.")
     with sqlite3.connect(db_path) as con:
         con.row_factory = sqlite3.Row           # Rows wie Dicts ansprechbar
         cur = con.execute(
@@ -63,6 +66,10 @@ def get_products_by_barcodes(
     Returns:
         A list of product dictionaries or a mapping of barcodes to product dicts.
     """
+    BASE_DIR = os.environ.get("BASE_DIR", Path(__file__).resolve().parent.parent)
+    db_path = BASE_DIR / db_path
+    if not db_path.exists():
+        raise FileNotFoundError(f"Database file '{db_path}' does not exist.")
     barcodes = list(dict.fromkeys(barcodes))    # Duplikate entfernen, Reihenfolge wahren
     if not barcodes:
         return {} if as_mapping else []
@@ -96,6 +103,36 @@ def test_get_product_by_barcode():
         print(f"Produkt gefunden: {product}")
     else:
         print("Produkt nicht gefunden.")
+
+def setup_product_db_sqlite():
+    """
+    Set up the SQLite product database.
+    Creates the database file and initializes the products table if it doesn't exist.
+    """
+    BASE_DIR = Path(__file__).parent.parent
+    db_path = BASE_DIR / PRODUCTS_DB_PATH
+    if not db_path.exists():
+        db_path.parent.mkdir(parents=True, exist_ok=True)  # Verzeichnis erstellen falls nicht vorhanden
+        with sqlite3.connect(db_path) as con:
+            cur = con.cursor()
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS products (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    barcode TEXT UNIQUE NOT NULL,
+                    name TEXT,
+                    brand TEXT,
+                    description TEXT,
+                    tags TEXT,
+                    origin TEXT,
+                    categories TEXT,
+                    categoryGroups TEXT,
+                    organicInspection TEXT
+                )
+            """)
+            con.commit()
+        print(f"Produktdatenbank '{db_path}' wurde erstellt.")
+    else:
+        print(f"Produktdatenbank '{db_path}' existiert bereits.")
 
 if __name__ == "__main__":
     # Direktstart ohne Kommandozeilen-Parameter

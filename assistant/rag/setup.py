@@ -8,15 +8,16 @@ def setup_product_db_chroma():
     Set up the Chroma vector store for product data.
     This function creates a vector store using the specified file and directory.
     """
-    BASE_DIR = Path(__file__).resolve().parent.parent
-
-    file_path = Path("assistant/data/products.md")
+    BASE_DIR = os.environ.get("BASE_DIR", Path(__file__).resolve().parent.parent)
+    ic(BASE_DIR)
+    file_path = Path("data/products.md")
     file_path = BASE_DIR / file_path
+    ic(file_path)
     chroma_dir = Path(os.getenv("CHROMA_PRODUCT_DB", "chroma_products"))
     chroma_dir = BASE_DIR / chroma_dir
-    
+    ic(chroma_dir)
     # Ensure the directory exists
-    chroma_dir.mkdir(parents=True, exist_ok=True)
+    # chroma_dir.mkdir(parents=True, exist_ok=True)
 
     # Create the vector store
     print("Creating vector store. This may take a while...")

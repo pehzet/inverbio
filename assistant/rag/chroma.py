@@ -149,8 +149,8 @@ def create_vector_store_chroma(
             "Set 'overwrite=True' to delete it."
         )
 
-    out_dir.mkdir(parents=True, exist_ok=True)
-    path = Path(file_path).expanduser().resolve()
+    path = file_path
+    # path = Path(file_path).expanduser().resolve()
     if not path.exists():
         raise FileNotFoundError(path)
     if path.is_dir():

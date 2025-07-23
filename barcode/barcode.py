@@ -2,6 +2,7 @@ import sqlite3
 from pathlib import Path
 import json
 from typing import Iterable, List, Dict, Any
+
 from icecream import ic
 import os
 PRODUCTS_DB_PATH = Path(os.environ.get("PRODUCT_DB_PATH", "products_db/products.db"))
@@ -97,42 +98,76 @@ def test_get_product_by_barcode():
     """
     Test function to demonstrate usage.
     """
-    barcode = "4016249010201"  # Beispiel-Barcode
+    # barcode = "4016249010201"  # Beispiel-Barcode
+    barcode = "4022381034098"  # Beispiel-Barcode
     product = get_product_by_barcode(barcode)
     if product:
         print(f"Produkt gefunden: {product}")
     else:
         print("Produkt nicht gefunden.")
 
-def setup_product_db_sqlite():
+
+def setup_product_db_sqlite() -> None:
     """
-    Set up the SQLite product database.
-    Creates the database file and initializes the products table if it doesn't exist.
+    Set up the SQLite product database from a JSON file.
+    This function reads product data from a JSON file and creates a SQLite database.
+    Specify the paths in the environment variables:
+    - PRODUCT_DB_PATH: Path to the SQLite database file (default: "products_db/products.db")
+    - PRODUCTS_PATH: Path to the JSON file containing product data (default: "data/produkte_deutsch.json")
     """
+    # determine paths
     BASE_DIR = Path(__file__).parent.parent
-    db_path = BASE_DIR / PRODUCTS_DB_PATH
-    if not db_path.exists():
-        db_path.parent.mkdir(parents=True, exist_ok=True)  # Verzeichnis erstellen falls nicht vorhanden
-        with sqlite3.connect(db_path) as con:
-            cur = con.cursor()
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS products (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    barcode TEXT UNIQUE NOT NULL,
-                    name TEXT,
-                    brand TEXT,
-                    description TEXT,
-                    tags TEXT,
-                    origin TEXT,
-                    categories TEXT,
-                    categoryGroups TEXT,
-                    organicInspection TEXT
-                )
-            """)
-            con.commit()
-        print(f"Produktdatenbank '{db_path}' wurde erstellt.")
-    else:
-        print(f"Produktdatenbank '{db_path}' existiert bereits.")
+    db_file = BASE_DIR / os.environ.get("PRODUCT_DB_PATH", "products_db/products.db")
+    json_file = BASE_DIR / os.environ.get("PRODUCTS_PATH", "data/produkte_deutsch.json")
+
+    # load products
+    with json_file.open("r", encoding="utf-8") as f:
+        products: List[Dict[str, Any]] = json.load(f)
+    if not products:
+        raise ValueError("No products found in JSON")
+
+    # collect keys, skip 'id'
+    raw_keys = set().union(*(p.keys() for p in products))
+    columns = sorted(k for k in raw_keys if k.lower() != "id")
+
+    # infer types
+    type_map: Dict[str, str] = {}
+    for col in columns:
+        vals = [p.get(col) for p in products if p.get(col) is not None]
+        if all(isinstance(v, int) for v in vals):
+            type_map[col] = "INTEGER"
+        elif all(isinstance(v, (int, float)) for v in vals):
+            type_map[col] = "REAL"
+        else:
+            type_map[col] = "TEXT"
+
+    # ensure db dir exists
+    db_file.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(db_file)
+    cur = conn.cursor()
+
+    # create table
+    cols_def = ", ".join(f'"{col}" {type_map[col]}' for col in columns)
+    cur.execute(f'CREATE TABLE IF NOT EXISTS products (id INTEGER PRIMARY KEY, {cols_def})')
+
+    # prepare insert
+    cols_list = ", ".join(f'"{col}"' for col in columns)
+    placeholders = ", ".join("?" for _ in columns)
+    insert_sql = f'INSERT INTO products ({cols_list}) VALUES ({placeholders})'
+    ic(products[-1])
+    # insert each product, serializing lists/dicts
+    for p in products:
+        row: List[Any] = []
+        for col in columns:
+            val = p.get(col)
+            if isinstance(val, (list, dict)):
+                val = json.dumps(val, ensure_ascii=False)
+            row.append(val)
+        cur.execute(insert_sql, row)
+
+    conn.commit()
+    conn.close()
+
 
 if __name__ == "__main__":
     # Direktstart ohne Kommandozeilen-Parameter

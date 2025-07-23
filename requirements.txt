@@ -15,5 +15,6 @@ firebase-admin
 icecream
 langgraph-checkpoint-postgres
 langgraph-checkpoint-mysql[pymysql]
-psycopg
+psycopg[binary]
 pypdf
+pydantic

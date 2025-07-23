@@ -1,6 +1,4 @@
 import os
-
-
 from langchain_openai import ChatOpenAI
 from assistant.llm_factory import get_llm
 from assistant.image_utils import create_msg_with_img
@@ -11,6 +9,8 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.graph.state import CompiledStateGraph
 from langchain_core.messages import AIMessage, SystemMessage, HumanMessage, RemoveMessage, ToolMessage
 from langchain_core.prompts import PromptTemplate, ChatPromptTemplate
+from langchain_core.output_parsers import JsonOutputParser
+from assistant.schemas import AgentResponseFormat
 from pathlib import Path
 import uuid
 from typing import Tuple
@@ -27,7 +27,8 @@ import datetime
 from icecream import ic
 from assistant.agent_config import AgentConfig
 from barcode.barcode import get_product_by_barcode, get_products_by_barcodes
-
+import pytz
+from pydantic import ValidationError
 class Agent:
     def __init__(self, config:AgentConfig = None):
         self.config = config or AgentConfig.as_default()
@@ -42,14 +43,18 @@ class Agent:
     def get_prompt_from_langsmith(self, prompt_identifier: str) -> ChatPromptTemplate:
         return self.langsmith_client.pull_prompt(prompt_identifier)
 
-    def initalize_llm_and_tools(self):
+    def init_llm_and_tools(self) -> Tuple[ChatOpenAI, List[Any]]:
         llm_provider = self.config.get("llm_provider", "openai")
         llm_model = self.config.get("llm_model", "gpt-4o-mini")
         llm: ChatOpenAI = get_llm(llm_provider, llm_model)
         tools = get_farmely_tools()
-        llm = llm.bind_tools(tools)
+        llm = llm.bind_tools(tools, tool_choice="auto")
         return llm, tools
-
+    def init_formatter_llm(self, format_cls=AgentResponseFormat):
+        llm = get_llm(self.config.get("llm_provider","openai"),
+                      "gpt-4.1-nano")
+                    # self.config.get("llm_model","gpt-4o-mini")) # TODO SPECIFY AS PARAMETER
+        return llm.with_structured_output(format_cls)
     def _format_products_for_prompt(self, products):
         if not products:
             return ""
@@ -80,15 +85,40 @@ class Agent:
             cleaned.append(m)
 
         return cleaned
-    def assistant(self, state: ComplexState):
-
     
+
+    def get_format_msg(self) -> str:
+        parser = JsonOutputParser(pydantic_object=AgentResponseFormat)
+        format_instructions = parser.get_format_instructions()
+        format_msg = SystemMessage(
+            content=format_instructions,
+            additional_kwargs={"internal": True}
+        )
+        return format_msg
+    def get_system_message(self, state: ComplexState) -> SystemMessage:
+        """
+        Returns the system message for the assistant, including current date and time.
+        """
+
+        
+        # Define Berlin timezone so it works in any timezone
+        berlin_tz = pytz.timezone('Europe/Berlin')
+        now_berlin = datetime.datetime.now(berlin_tz)
+
+        current_day = now_berlin.strftime("%A, %d.%m.%Y")
+        current_time = now_berlin.strftime("%H:%M")
+        output_schema = self.get_format_instructions()
         base_sys = self.get_prompt_from_langsmith("assistant-system-message")\
             .format_prompt(
                 user_name       = state["user"].get("name", "Anonym"),
-                user_preferences = json.dumps(
-                    state["user"].get("preferences", {}), ensure_ascii=False)
+                current_day     = current_day,
+                current_time    = current_time,
+                output_schema   = output_schema,
             ).to_messages()
+        return base_sys 
+    def agent(self, state: ComplexState):
+        system_message = self.get_system_message(state)
+
 
 
         history_raw = state["messages"]
@@ -108,6 +138,7 @@ class Agent:
             "location":           state["context"].get("location"),
     
         }
+
         gen_ctx_msg = SystemMessage(
             content=f"<GEN-CONTEXT>\n{json.dumps(gen_ctx_payload, ensure_ascii=False)}\n</GEN-CONTEXT>",
             additional_kwargs={"internal": True}
@@ -118,6 +149,7 @@ class Agent:
             "current_products": state["context"].get("current_products", []),
             "timestamp_utc":    state["context"].get("last_message_utc"),
         }
+
         cur_ctx_msg = SystemMessage(
             content=f"<CURRENT-CONTEXT>\n{json.dumps(cur_ctx_payload, ensure_ascii=False)}\n</CURRENT-CONTEXT>",
             additional_kwargs={"internal": True}
@@ -125,21 +157,21 @@ class Agent:
 
 
         messages_for_llm = (
-            base_sys +
+            system_message +
             [gen_ctx_msg] +
             history_before_last +
             [cur_ctx_msg, last_user] +   #  ← Current Context direkt vor User
             history_after_last # required for tool calls to work properly
         )
 
-        llm, _  = self.initalize_llm_and_tools()
-        response = llm.invoke(messages_for_llm)
+        llm, _  = self.init_llm_and_tools()
+        raw_ai: AIMessage = llm.invoke(messages_for_llm)
+     
 
         return {
-            "messages": [response],
-            "messages_history": [last_user, response]
+            "messages": [raw_ai],
+            "messages_history": [last_user, raw_ai],
         }
-
 
     def custom_tools_condition(self, state: ComplexState) -> str:
         tool_call_messages = [
@@ -154,8 +186,23 @@ class Agent:
             for tool_call in msg.additional_kwargs["tool_calls"]:
                 if tool_call["id"] not in tool_responses:
                     return tool_call["function"]["name"]
-        return END
-
+        return "format_output"
+    
+    def get_format_instructions(self, pydantic_object=AgentResponseFormat) -> str:
+        parser = JsonOutputParser(pydantic_object=pydantic_object)
+        return parser.get_format_instructions()
+    # def get_schema_hint_msg(self):
+    #     parser = JsonOutputParser(pydantic_object=AgentResponseFormat)
+    #     instr = parser.get_format_instructions()
+    #     return SystemMessage(
+    #         content=(
+    #             "Wenn du **fertig** bist und KEIN weiteres Tool brauchst, "
+    #             "antworte ausschließlich im folgenden JSON-Format:\n\n"
+    #             f"{instr}\n\n"
+    #             "Wenn du ein Tool aufrufen willst, mach das wie gewohnt und ignoriere das Schema."
+    #         ),
+    #         additional_kwargs={"internal": True}
+    #     )
     def load_user_profile(self, state: ComplexState) -> Dict[str, Any]:
         """
         Graph-node: ensure `state.user` is present.
@@ -207,7 +254,7 @@ class Agent:
         • The node does **not** modify state in-place; it returns a patch.
         """
 
-        # 1 — locate the most-recent HumanMessage
+ 
         last_msg = next(
             (m for m in reversed(state["messages"]) if isinstance(m, HumanMessage)),
             None,
@@ -217,10 +264,10 @@ class Agent:
 
         meta = last_msg.metadata or {}
 
-        # 2 — collect new context ------------------------------------
+        
         new_ctx: Dict[str, Any] = {}
 
-        # ── (a) Bar-codes → product objects -------------------------
+  
         barcode = meta.get("barcode")
         if barcode:
             mentioned: List[Dict[str, Any]] = []
@@ -232,6 +279,7 @@ class Agent:
 
             elif isinstance(barcode, list):
                 products = get_products_by_barcodes(barcode)    # may return dict
+
                 if products:
                     if isinstance(products, dict):
                         mentioned.extend(products.values())
@@ -245,63 +293,112 @@ class Agent:
                 new_ctx["mentioned_products"] = list(combined.values())
                 new_ctx["current_products"]   = mentioned              # focus set
 
-        # ── (b) Location -------------------------------------------
+
         if "location" in meta:
             new_ctx["location"] = meta["location"]
 
-        # ── (c) Timestamp ------------------------------------------
-        new_ctx["last_message_utc"] = datetime.datetime.utcnow().isoformat()
 
-        # 3 — return patch or empty dict -----------------------------
+        new_ctx["last_message_utc"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+       
         return {"context": new_ctx} if new_ctx else {}
 
+    def _strip_tool_calls_none(self, msg: AIMessage) -> AIMessage:
+        kws = dict(msg.additional_kwargs or {})
+        if kws.get("tool_calls") is None:
+            kws.pop("tool_calls", None)
+        return msg.model_copy(update={"additional_kwargs": kws})
+
+    def format_output(self, state: ComplexState):
+        last_ai = next(
+            m for m in reversed(state["messages"])
+            if isinstance(m, AIMessage) and not m.additional_kwargs.get("tool_calls")
+        )
+    
+        try:
+            raw = last_ai.content
+            if raw.startswith("```"):
+                raw = raw.strip("`").split("\n", 1)[1]  
+            if isinstance(raw, str):
+                structured = AgentResponseFormat.model_validate_json(raw)
+            elif isinstance(raw, dict):
+                structured = AgentResponseFormat.model_validate(raw)
+            else:
+                structured = AgentResponseFormat.model_validate_json(json.dumps(raw))
+        except ValidationError:
+            ic("GOING TO CALL LLM FOR FORMATTING")
+            fmt_llm   = self.init_formatter_llm()
+            format_msg = self.get_format_msg()
+            clean_ai  = self._strip_tool_calls_none(last_ai)
+            # Optional: statt AIMessage → HumanMessage(content=clean_ai.content)
+            # human_last = HumanMessage(content=clean_ai.content)
+            structured = fmt_llm.invoke([format_msg, clean_ai])
+
+        ai_msg = AIMessage(
+            content=structured.response,
+            additional_kwargs={
+                "internal": True,
+                "suggestions": getattr(structured, "suggestions", None),
+            },
+        )
+        ic(structured.model_dump())
+        return {
+            "structured_response": structured.model_dump(),
+            "messages": [ai_msg],
+            "messages_history":  [ai_msg], # typically no HumanMessage here because user had no turn # gpt suggested state.get("messages_history", []) 
+        }
 
     def create_graph(self) -> CompiledStateGraph:
 
         agent_flow = StateGraph(ComplexState)
+
         agent_flow.add_node("load_user_profile", self.load_user_profile)
         agent_flow.add_node("extract_context",   self.extract_context)
-        agent_flow.add_node("assistant", self.assistant)
-        
-        # External Tools
-        chroma_dir = Path(os.getenv("CHROMA_PRODUCT_DB", "chroma_db"))
-        rag_tool = get_retriever_tool("retrieve_products", "chroma", chroma_dir=chroma_dir)
-        stock_tool = get_tool("fetch_product_stock")
-        agent_flow.add_node("retrieve_products", ToolNode([rag_tool]))
+        agent_flow.add_node("agent",             self.agent)            # tool caller
+        agent_flow.add_node("format_output",     self.format_output)    # structured output
+        agent_flow.add_node("summarize_conversation", summarize_conversation)
+
+        # Tools
+        chroma_dir  = Path(os.getenv("CHROMA_PRODUCT_DB", "chroma_db"))
+        rag_tool    = get_retriever_tool("retrieve_products", "chroma", chroma_dir=chroma_dir)
+        stock_tool  = get_tool("fetch_product_stock")
+        agent_flow.add_node("retrieve_products",   ToolNode([rag_tool]))
         agent_flow.add_node("fetch_product_stock", ToolNode([stock_tool]))
-        # Summarization
-        agent_flow.add_node(summarize_conversation)
+
         agent_flow.set_entry_point("load_user_profile")
         agent_flow.add_edge("load_user_profile", "extract_context")
-        agent_flow.add_edge("extract_context",   "assistant")
-        
-        # agent_flow.set_entry_point("assistant")
+        agent_flow.add_edge("extract_context",   "agent")
 
+        # --- ONLY ONE conditional router from "agent" ---
         agent_flow.add_conditional_edges(
-            "assistant",
+            "agent",
             self.custom_tools_condition,
             {
                 "retrieve_products": "retrieve_products",
                 "fetch_product_stock": "fetch_product_stock",
-                END: END,
+                "format_output": "format_output",
             }
         )
 
-        agent_flow.add_edge("retrieve_products", "assistant")
-        agent_flow.add_edge("fetch_product_stock", "assistant")
+        agent_flow.add_edge("retrieve_products",   "agent")
+        agent_flow.add_edge("fetch_product_stock", "agent")
 
+        # --- Summary decision AFTER formatting ---
         agent_flow.add_conditional_edges(
-            "assistant",
+            "format_output",
             check_summary,
             {
                 "summarize_conversation": "summarize_conversation",
                 END: END,
             }
         )
+
         agent_flow.add_edge("summarize_conversation", END)
+
         cp = get_checkpoint(type=self.config.get("checkpoint_type", "sqlite"))
 
+
         graph = agent_flow.compile(checkpointer=cp)
+
         return graph
 
     def get_graph(self, force_new=False) -> CompiledStateGraph:
@@ -434,7 +531,7 @@ class Agent:
             meta["barcode"] = barcode
 
         msg = msg.model_copy(update={"metadata": meta})
-
+       
         return {"messages": [msg]}
 
     # def chat(self, msg: str, images: list[str] = None, user_id: str = None, thread_id: str = None) -> Tuple[str, str]:

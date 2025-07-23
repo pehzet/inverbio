@@ -108,7 +108,7 @@ def fetch_product_stock_api(product_id: str):
     # Umgebungsvariablen lesen
     host = os.getenv(HOST_VAR_NAME)
     api_key = os.getenv(API_KEY_VAR_NAME)
-    print("Product ID", product_id)
+
     if not host or not api_key:
         raise EnvironmentError("HOST oder APIKEY ist nicht in den Umgebungsvariablen gesetzt.")
 
@@ -123,8 +123,9 @@ def fetch_product_stock_api(product_id: str):
     try:
         response = requests.get(url, headers=headers)
         response.raise_for_status()
-        print(response.json())
-        return response.json()
+        response_json = response.json()
+        print(response_json)
+        return response_json
     except requests.RequestException as e:
         print(f"Fehler beim Abrufen des Lagerbestands: {e}")
         print(f"Status Code: {response.status_code if 'response' in locals() else 'N/A'}")

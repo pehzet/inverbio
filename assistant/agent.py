@@ -325,10 +325,16 @@ class Agent:
             else:
                 structured = AgentResponseFormat.model_validate_json(json.dumps(raw))
         except ValidationError:
-            ic("GOING TO CALL LLM FOR FORMATTING")
             fmt_llm   = self.init_formatter_llm()
             format_msg = self.get_format_msg()
+            further_instruction = """
+            Sollte in der Antwort ein Bild als image_path enthalten sein, dann strukturiere es so:
+            image_path: url
+            Beides ohne Anführungszeichen. Dies ist wichtig, damit es im Frontend korrekt dargestellt werden kann.
+            """
+            format_msg.content += further_instruction
             clean_ai  = self._strip_tool_calls_none(last_ai)
+
             # Optional: statt AIMessage → HumanMessage(content=clean_ai.content)
             # human_last = HumanMessage(content=clean_ai.content)
             structured = fmt_llm.invoke([format_msg, clean_ai])
@@ -340,7 +346,6 @@ class Agent:
                 "suggestions": getattr(structured, "suggestions", None),
             },
         )
-        ic(structured.model_dump())
         return {
             "structured_response": structured.model_dump(),
             "messages": [ai_msg],
@@ -551,7 +556,10 @@ class Agent:
   
         graph_input = self.create_graph_input(content, user_id)
         result = graph.invoke(graph_input, config)
-        return result["messages"][-1].content, thread_id
+        message = result["messages"][-1]
+        response = message.content
+        suggestions = message.additional_kwargs.get("suggestions", [])
+        return response, suggestions, thread_id
 
 
 if __name__ == "__main__":

@@ -2,7 +2,7 @@ from langchain.tools import Tool
 from assistant.rag.rag_factory import get_vector_store
 from langchain.tools.retriever import create_retriever_tool
 from langgraph.prebuilt import ToolNode
-from assistant.farmely_api_langchain import fetch_product_stock
+from assistant.tools.farmely.farmely_api_langchain import fetch_product_stock
 def get_retriever_tool(tool_name:str, db:str, **kwargs) -> Tool:
     if tool_name == "retrieve_products":
         retriever = get_vector_store(db, **kwargs)

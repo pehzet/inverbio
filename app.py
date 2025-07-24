@@ -136,8 +136,8 @@ def chat():
         return jsonify(error="Parameter 'content' with 'msg' is required."), 400
 
     user = data.get("user", {})
-    answer, thread_id = agent.chat(content, user)
-    return jsonify(response=answer, thread_id=thread_id), 200
+    response, suggestions, thread_id = agent.chat(content, user)
+    return jsonify(response=response, suggestions=suggestions, thread_id=thread_id), 200
 
 
 @app.route("/messages", methods=["GET", "POST"])
@@ -150,13 +150,12 @@ def get_messages_by_thread_id():
         return jsonify(error="Parameter 'thread_id' ist erforderlich."), 400
 
     thread_id = data.get("thread_id")
-
     t0 = time.time()
 
     print(f"Agent initialized in {time.time() - t0:.2f}s")
 
     t0 = time.time()
-    messages = agent.get_messages_by_thread_id(thread_id)
+    messages = agent.get_messages_by_thread_id(thread_id) if thread_id else []
     print(f"Messages fetched in {time.time() - t0:.2f}s")
 
     return jsonify(messages=messages), 200

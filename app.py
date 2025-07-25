@@ -170,7 +170,7 @@ def get_product_by_barcode_route():
 
     product = get_product_by_barcode(barcode)
     if not product:
-        return jsonify(exists=False, product={}), 404
+        return jsonify(exists=False, product={}), 200
 
     return jsonify(exists=True, product=product), 200
 

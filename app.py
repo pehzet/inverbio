@@ -103,7 +103,7 @@ def spa_fallback(path):
 @app.route("/chat", methods=["POST"])
 @require_api_key
 def chat():
-    ic(request)
+    ic(request.get_json(silent=True))
     ic(request.form.get("payload"))
     if request.content_type and request.content_type.startswith("multipart/"):
         payload_str = request.form.get("payload")

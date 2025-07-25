@@ -13,7 +13,7 @@ from assistant.checkpointers.sqlite import get_sqlite_checkpoint
 from assistant.checkpointers.firestore import get_firestore_checkpoint
 from assistant.checkpointers.mysql import get_mysql_checkpoint
 from assistant.checkpointers.postgres import get_postgres_checkpoint
-from assistant.utils.utils import merge_dicts
+from assistant.utils.others import merge_dicts
 class ComplexState(MessagesState):
     summary: str
     messages_history: Annotated[list[AnyMessage], add_messages]

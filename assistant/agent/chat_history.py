@@ -3,7 +3,7 @@ import os
 from typing import List, Union
 
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
-from assistant.agent import Agent
+from assistant.agent.agent import Agent
 # 1. Graph mit InMemory-Saver kompilieren (ersetzt InMemorySaver bei Bedarf durch deinen Postgres/Sqlite-Saver)
 from icecream import ic
 

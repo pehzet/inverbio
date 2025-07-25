@@ -1,5 +1,5 @@
-from assistant.agent import Agent
-from assistant.agent_config import AgentConfig
+from assistant.agent.agent import Agent
+from assistant.agent.agent_config import AgentConfig
 from assistant.utils.env_check import load_and_check_env
 
 # Python as usual: import necessary modules

@@ -28,8 +28,8 @@ else:
 import time
 from flask import Flask, request, jsonify, send_from_directory, abort
 from flask_cors import CORS
-from assistant.agent import Agent
-from assistant.agent_config import AgentConfig
+from assistant.agent.agent import Agent
+from assistant.agent.agent_config import AgentConfig
 from icecream import ic
 from barcode.barcode import get_product_by_barcode
 API_KEY = os.environ.get("INVERBIO_API_KEY")  
@@ -103,8 +103,7 @@ def spa_fallback(path):
 @app.route("/chat", methods=["POST"])
 @require_api_key
 def chat():
-    ic(request)
-    ic(request.form.get("payload"))
+
     if request.content_type and request.content_type.startswith("multipart/"):
         payload_str = request.form.get("payload")
         if not payload_str:

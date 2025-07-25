@@ -1,6 +1,6 @@
 from firebase_admin import credentials, firestore, storage as admin_storage
 import firebase_admin
-
+import os
 def initialize_firebase(
     project_id: str | None = None,
     credential_path: str | None = None,
@@ -12,7 +12,7 @@ def initialize_firebase(
     """
     if not firebase_admin._apps:
         # Test
-        storage_bucket ="inverbio-8342a.appspot.com" 
+        storage_bucket =os.environ.get("FIREBASE_STORAGE_BUCKET", storage_bucket)
         # 1) Credentials wählen
         if credential_path:
             cred = credentials.Certificate(credential_path)

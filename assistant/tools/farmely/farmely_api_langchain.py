@@ -4,7 +4,7 @@ import json
 import os
 from assistant.logger import log_execution
 
-@log_execution()
+
 def _get_product_id_by_name(product_name: str) -> str:
     """
     Fetches the product ID by its name.

@@ -11,6 +11,7 @@ from langchain_core.messages import AIMessage, SystemMessage, HumanMessage, Remo
 from langchain_core.prompts import PromptTemplate, ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
 from assistant.schemas import AgentResponseFormat
+from assistant.logger import log_execution
 from pathlib import Path
 import uuid
 from typing import Tuple
@@ -95,6 +96,8 @@ class Agent:
             additional_kwargs={"internal": True}
         )
         return format_msg
+
+    @log_execution()
     def get_system_message(self, state: ComplexState) -> SystemMessage:
         """
         Returns the system message for the assistant, including current date and time.
@@ -116,6 +119,8 @@ class Agent:
                 output_schema   = output_schema,
             ).to_messages()
         return base_sys 
+    
+    @log_execution()
     def agent(self, state: ComplexState):
         system_message = self.get_system_message(state)
 
@@ -540,6 +545,7 @@ class Agent:
         return {"messages": [msg]}
 
     # def chat(self, msg: str, images: list[str] = None, user_id: str = None, thread_id: str = None) -> Tuple[str, str]:
+    @log_execution()
     def chat(self, content: dict, user:dict=None) -> Tuple[str, str]:
 
 

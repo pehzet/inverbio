@@ -30,6 +30,7 @@ from flask import Flask, request, jsonify, send_from_directory, abort
 from flask_cors import CORS
 from assistant.agent import Agent
 from assistant.agent_config import AgentConfig
+from assistant.logger import log_execution
 from icecream import ic
 from barcode.barcode import get_product_by_barcode
 API_KEY = os.environ.get("INVERBIO_API_KEY")  
@@ -79,11 +80,11 @@ def index():
     return send_from_directory(DIST_DIR, "index.html")
 
 # optionaler SPA-Fallback, falls du später Unterseiten hast
-@app.route("/<path:path>")
-def spa_fallback(path):
-    if path.startswith("api/"):        # API-Routes weiterhin an Flask
-        abort(404)
-    return send_from_directory(DIST_DIR, "index.html")
+# @app.route("/<path:path>")
+# def spa_fallback(path):
+#     if path.startswith("api/"):        # API-Routes weiterhin an Flask
+#         abort(404)
+#     return send_from_directory(DIST_DIR, "index.html")
 
 
 # @app.route("/chat", methods=["POST"])
@@ -99,14 +100,11 @@ def spa_fallback(path):
 #     user = data.get("user", {})
 #     answer, thread_id = agent.chat(content, user)
 #     return jsonify(response=answer, thread_id=thread_id), 200
-
+@log_execution()
 @app.route("/chat", methods=["POST"])
 @require_api_key
 def chat():
-    ic(request.headers)
-    ic(request.form)
-    ic(request.files)
-    ic(request.form.get("payload"))
+
     if request.content_type and request.content_type.startswith("multipart/"):
         payload_str = request.form.get("payload")
         if not payload_str:
@@ -141,7 +139,7 @@ def chat():
     response, suggestions, thread_id = agent.chat(content, user)
     return jsonify(response=response, suggestions=suggestions, thread_id=thread_id), 200
 
-
+@log_execution()
 @app.route("/messages", methods=["GET", "POST"])
 @require_api_key
 def get_messages_by_thread_id():
@@ -161,7 +159,7 @@ def get_messages_by_thread_id():
     print(f"Messages fetched in {time.time() - t0:.2f}s")
 
     return jsonify(messages=messages), 200
-
+@log_execution()
 @app.route("/product_by_barcode", methods=["GET"])
 @require_api_key
 def get_product_by_barcode_route():

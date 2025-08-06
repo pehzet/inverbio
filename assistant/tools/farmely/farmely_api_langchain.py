@@ -2,6 +2,9 @@ from langchain_core.tools import tool
 from assistant.tools.farmely.farmely_api import fetch_product_stock_api
 import json
 import os
+from assistant.logger import log_execution
+
+@log_execution()
 def _get_product_id_by_name(product_name: str) -> str:
     """
     Fetches the product ID by its name.
@@ -21,6 +24,7 @@ def _get_product_id_by_name(product_name: str) -> str:
     produkt_id = next((p.get("ID", p.get("Id", p.get("id", None))) for p in products if p["Name"] == product_name), None)
     return str(produkt_id)
 
+@log_execution()
 @tool
 def fetch_product_stock(product_id: str):
     """

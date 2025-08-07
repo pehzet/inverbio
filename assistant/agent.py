@@ -1,5 +1,6 @@
 import os
 from langchain_openai import ChatOpenAI
+from assistant import state
 from assistant.llm_factory import get_llm
 from assistant.image_utils import create_msg_with_img
 from langgraph.prebuilt import ToolNode, tools_condition
@@ -178,21 +179,25 @@ class Agent:
             "messages_history": [last_user, raw_ai],
         }
 
+    # def custom_tools_condition(self, state: ComplexState) -> str:
+    #     tool_call_messages = [
+    #         msg for msg in state["messages"]
+    #         if isinstance(msg, AIMessage) and msg.additional_kwargs.get("tool_calls")
+    #     ]
+    #     tool_responses = {
+    #         msg.tool_call_id for msg in state["messages"]
+    #         if isinstance(msg, ToolMessage)
+    #     }
+    #     for msg in reversed(tool_call_messages):
+    #         for tool_call in msg.additional_kwargs["tool_calls"]:
+    #             if tool_call["id"] not in tool_responses:
+    #                 return tool_call["function"]["name"]
+    #     return "format_output"
     def custom_tools_condition(self, state: ComplexState) -> str:
-        tool_call_messages = [
-            msg for msg in state["messages"]
-            if isinstance(msg, AIMessage) and msg.additional_kwargs.get("tool_calls")
-        ]
-        tool_responses = {
-            msg.tool_call_id for msg in state["messages"]
-            if isinstance(msg, ToolMessage)
-        }
-        for msg in reversed(tool_call_messages):
-            for tool_call in msg.additional_kwargs["tool_calls"]:
-                if tool_call["id"] not in tool_responses:
-                    return tool_call["function"]["name"]
+        msg = state["messages"][-1]
+        if getattr(msg, "tool_calls", None):
+            return "custom_tools"
         return "format_output"
-    
     def get_format_instructions(self, pydantic_object=AgentResponseFormat) -> str:
         parser = JsonOutputParser(pydantic_object=pydantic_object)
         return parser.get_format_instructions()
@@ -357,60 +362,114 @@ class Agent:
             "messages_history":  [ai_msg], # typically no HumanMessage here because user had no turn # gpt suggested state.get("messages_history", []) 
         }
 
-    def create_graph(self) -> CompiledStateGraph:
+    # def create_graph(self) -> CompiledStateGraph:
 
+    #     agent_flow = StateGraph(ComplexState)
+
+    #     agent_flow.add_node("load_user_profile", self.load_user_profile)
+    #     agent_flow.add_node("extract_context",   self.extract_context)
+    #     agent_flow.add_node("agent",             self.agent)            # tool caller
+    #     agent_flow.add_node("format_output",     self.format_output)    # structured output
+    #     agent_flow.add_node("summarize_conversation", summarize_conversation)
+
+    #     #Tools
+    #     chroma_dir  = Path(os.getenv("CHROMA_PRODUCT_DB", "chroma_db"))
+    #     rag_tool    = get_retriever_tool("retrieve_products", "chroma", chroma_dir=chroma_dir)
+    #     stock_tool  = get_tool("fetch_product_stock")
+    #     product_info_tool = get_tool("get_product_information_by_id")
+    #     producer_info_tool = get_tool("get_producer_information_by_identifier")
+    #     agent_flow.add_node("retrieve_products",   ToolNode([rag_tool]))
+    #     agent_flow.add_node("fetch_product_stock", ToolNode([stock_tool]))
+    #     agent_flow.add_node("get_product_information_by_id", ToolNode([product_info_tool]))
+    #     agent_flow.add_node("get_producer_information_by_identifier", ToolNode([producer_info_tool]))
+
+    #     agent_flow.set_entry_point("load_user_profile")
+    #     agent_flow.add_edge("load_user_profile", "extract_context")
+    #     agent_flow.add_edge("extract_context",   "agent")
+
+    #     # --- ONLY ONE conditional router from "agent" ---
+    #     agent_flow.add_conditional_edges(
+    #         "agent",
+    #         self.custom_tools_condition,
+    #         {
+    #             "retrieve_products": "retrieve_products",
+    #             "fetch_product_stock": "fetch_product_stock",
+    #             "format_output": "format_output",
+    #         }
+    #     )
+
+    #     agent_flow.add_edge("retrieve_products",   "agent")
+    #     agent_flow.add_edge("fetch_product_stock", "agent")
+
+    #     # --- Summary decision AFTER formatting ---
+    #     agent_flow.add_conditional_edges(
+    #         "format_output",
+    #         check_summary,
+    #         {
+    #             "summarize_conversation": "summarize_conversation",
+    #             END: END,
+    #         }
+    #     )
+
+    #     agent_flow.add_edge("summarize_conversation", END)
+
+    #     cp = get_checkpoint(type=self.config.get("checkpoint_type", "sqlite"))
+
+
+    #     graph = agent_flow.compile(checkpointer=cp)
+
+    #     return graph
+    def create_graph(self) -> CompiledStateGraph:
         agent_flow = StateGraph(ComplexState)
 
+        # --------- Nodes, die nichts mit Tools zu tun haben ----------
         agent_flow.add_node("load_user_profile", self.load_user_profile)
         agent_flow.add_node("extract_context",   self.extract_context)
-        agent_flow.add_node("agent",             self.agent)            # tool caller
+        agent_flow.add_node("agent",             self.agent)            # LLM / Tool-Caller
         agent_flow.add_node("format_output",     self.format_output)    # structured output
         agent_flow.add_node("summarize_conversation", summarize_conversation)
 
-        # Tools
-        chroma_dir  = Path(os.getenv("CHROMA_PRODUCT_DB", "chroma_db"))
-        rag_tool    = get_retriever_tool("retrieve_products", "chroma", chroma_dir=chroma_dir)
-        stock_tool  = get_tool("fetch_product_stock")
-        agent_flow.add_node("retrieve_products",   ToolNode([rag_tool]))
-        agent_flow.add_node("fetch_product_stock", ToolNode([stock_tool]))
+        # --------- EIN ToolNode für alle Farmely-Tools ----------
+        tools = get_farmely_tools()                    # liefert [rag_tool, stock_tool, …]
+        tool_node = ToolNode(tools)
+        agent_flow.add_node("custom_tools", tool_node)
 
+        # --------- Routing ----------
         agent_flow.set_entry_point("load_user_profile")
+
         agent_flow.add_edge("load_user_profile", "extract_context")
         agent_flow.add_edge("extract_context",   "agent")
 
-        # --- ONLY ONE conditional router from "agent" ---
+        # Nur ein Conditional-Router ab "agent"
+        # custom_tools_condition muss "custom_tools" oder "format_output" (oder END) zurückgeben
         agent_flow.add_conditional_edges(
             "agent",
             self.custom_tools_condition,
             {
-                "retrieve_products": "retrieve_products",
-                "fetch_product_stock": "fetch_product_stock",
-                "format_output": "format_output",
+                "custom_tools":   "custom_tools",   # führt Tool-Call(s) aus
+                "format_output":  "format_output",  # Antwort ist fertig
+                END:              END,              # optional, falls agent gleich fertig ist
             }
         )
 
-        agent_flow.add_edge("retrieve_products",   "agent")
-        agent_flow.add_edge("fetch_product_stock", "agent")
+        # Nach jedem Tool-Call zurück zum LLM
+        agent_flow.add_edge("custom_tools", "agent")
 
-        # --- Summary decision AFTER formatting ---
+        # --------- Zusammenfassung nach dem Formatieren ----------
         agent_flow.add_conditional_edges(
             "format_output",
             check_summary,
             {
                 "summarize_conversation": "summarize_conversation",
-                END: END,
+                END:                      END,
             }
         )
-
         agent_flow.add_edge("summarize_conversation", END)
 
+        # --------- Compile ----------
         cp = get_checkpoint(type=self.config.get("checkpoint_type", "sqlite"))
-
-
         graph = agent_flow.compile(checkpointer=cp)
-
         return graph
-
     def get_graph(self, force_new=False) -> CompiledStateGraph:
         if force_new or self.graph is None:
             self.graph = self.create_graph()

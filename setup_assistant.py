@@ -146,6 +146,9 @@ if __name__ == "__main__":
                 setup_all()
             elif sys.argv[1] == "products":
                 setup_product_dbs()
+            elif sys.argv[1] == "product_db":
+                setup_product_db("chroma")
+
             else:
                 print(f"Unknown argument: {sys.argv[1]}")
     except Exception as e:

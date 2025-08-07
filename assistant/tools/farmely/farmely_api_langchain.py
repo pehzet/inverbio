@@ -12,7 +12,7 @@ def _get_product_id_by_name(product_name: str) -> str:
     :return: The product ID as a string or None if not found
     """
     curr_dir = os.path.dirname(os.path.abspath(__file__))
-    file_name = "produkte_deutsch.json"
+    file_name = "rag_products.json"
     file_path = os.path.join(curr_dir, "rag_data", file_name)
     try:
         with open(file_path, "r", encoding="utf-8") as f:
@@ -38,6 +38,7 @@ def fetch_product_stock(product_id: str):
     try:
         _id = int(product_id)
     except ValueError:
+        # Fallback: make an db call later
         print(f"Invalid product ID: {product_id}. Must be an integer. I try to check the product name.")
         product_id = _get_product_id_by_name(product_id)
         if not product_id:

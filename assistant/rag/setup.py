@@ -10,20 +10,20 @@ def setup_product_db_chroma():
     """
     BASE_DIR = os.environ.get("BASE_DIR", Path(__file__).resolve().parent.parent)
     BASE_DIR = Path(BASE_DIR).resolve()
-    ic(BASE_DIR)
+
     file_path = Path("data/products.md")
     file_path = BASE_DIR / file_path
-    ic(file_path)
+
     chroma_dir = Path(os.getenv("CHROMA_PRODUCT_DB", "chroma_products"))
     chroma_dir = BASE_DIR / chroma_dir
-    ic(chroma_dir)
+
     # Ensure the directory exists
     # chroma_dir.mkdir(parents=True, exist_ok=True)
 
     # Create the vector store
     print("Creating vector store. This may take a while...")
     try:
-        create_vector_store_chroma(file_path=file_path, chroma_dir=chroma_dir, overwrite=False)
+        create_vector_store_chroma(file_path=file_path, chroma_dir=chroma_dir, overwrite=True)
         print(f"Vector store created at {chroma_dir}")
         return True
     except Exception as e:

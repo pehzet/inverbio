@@ -3,7 +3,7 @@ from assistant.tools.farmely.farmely_api import fetch_product_stock_api
 import json
 import os
 from assistant.logger import log_execution
-
+from pathlib import Path
 
 def _get_product_id_by_name(product_name: str) -> str:
     """
@@ -11,9 +11,9 @@ def _get_product_id_by_name(product_name: str) -> str:
     :param product_name: The name of the product
     :return: The product ID as a string or None if not found
     """
-    curr_dir = os.path.dirname(os.path.abspath(__file__))
+    curr_dir = Path(__file__).resolve().parent
     file_name = "rag_products.json"
-    file_path = os.path.join(curr_dir, "rag_data", file_name)
+    file_path = curr_dir / "data" / file_name
     try:
         with open(file_path, "r", encoding="utf-8") as f:
             products = json.load(f)

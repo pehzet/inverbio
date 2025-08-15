@@ -154,7 +154,6 @@ def setup_product_db_sqlite() -> None:
     cols_list = ", ".join(f'"{col}"' for col in columns)
     placeholders = ", ".join("?" for _ in columns)
     insert_sql = f'INSERT INTO products ({cols_list}) VALUES ({placeholders})'
-    ic(products[-1])
     # insert each product, serializing lists/dicts
     for p in products:
         row: List[Any] = []

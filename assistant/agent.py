@@ -47,7 +47,7 @@ class Agent:
 
     def init_llm_and_tools(self) -> Tuple[ChatOpenAI, List[Any]]:
         llm_provider = self.config.get("llm_provider", "openai")
-        llm_model = self.config.get("llm_model", "gpt-4o-mini")
+        llm_model = self.config.get("llm_model", "gpt-5-mini")
         llm: ChatOpenAI = get_llm(llm_provider, llm_model)
         tools = get_farmely_tools()
         llm = llm.bind_tools(tools, tool_choice="auto")
@@ -55,8 +55,8 @@ class Agent:
     def init_formatter_llm(self, format_cls=AgentResponseFormat):
    
         llm = get_llm(self.config.get("llm_provider","openai"),
-                      "gpt-4.1-nano")
-                    # self.config.get("llm_model","gpt-4o-mini")) # TODO SPECIFY AS PARAMETER
+                      "gpt-5-nano")
+                    # self.config.get("llm_model","gpt-5-nano")) # TODO SPECIFY AS PARAMETER
         return llm.with_structured_output(format_cls)
     def _format_products_for_prompt(self, products):
         if not products:
@@ -65,30 +65,55 @@ class Agent:
             f"- {p['name']} (SKU {p['id']}, {p.get('brand','')})"
             for p in products
         )
-    def _clean_history_for_llm(self, history):
-        """
-        Removes RemoveMessages and all ToolMessages whose
-        triggering assistant/tool_calls message does not (or no longer) exist.
-        """
+    # def _clean_history_for_llm(self, history):
+    #     """
+    #     Removes RemoveMessages and all ToolMessages whose
+    #     triggering assistant/tool_calls message does not (or no longer) exist.
+    #     """
     
-        valid_tool_ids = {
-            t["id"]
-            for m in history
-            if isinstance(m, AIMessage) and m.additional_kwargs.get("tool_calls")
-            for t in m.additional_kwargs["tool_calls"]
-        }
+    #     valid_tool_ids = {
+    #         t["id"]
+    #         for m in history
+    #         if isinstance(m, AIMessage) and m.additional_kwargs.get("tool_calls")
+    #         for t in m.additional_kwargs["tool_calls"]
+    #     }
 
   
+    #     cleaned = []
+    #     for m in history:
+    #         if isinstance(m, RemoveMessage):
+    #             continue                                
+    #         if isinstance(m, ToolMessage) and m.tool_call_id not in valid_tool_ids:
+    #             continue                              
+    #         cleaned.append(m)
+
+    #     return cleaned
+    def _clean_history_for_llm(self, history):
+        """
+        Removes RemoveMessages and all ToolMessages whose triggering assistant/tool_calls
+        message does not (or no longer) exist.
+        """
+        # 🔧 GPT-5: tool_calls hängen am Top-Level-Attribut `tool_calls`, nicht in additional_kwargs
+        valid_tool_ids = set()
+        for m in history:
+            if isinstance(m, AIMessage) and getattr(m, "tool_calls", None):
+                for t in m.tool_calls:
+                    # LangChain liefert meist Dicts, aber wir sind defensiv:
+                    if isinstance(t, dict):
+                        valid_tool_ids.add(t.get("id"))
+                    else:
+                        valid_tool_ids.add(getattr(t, "id", None))
+
         cleaned = []
         for m in history:
             if isinstance(m, RemoveMessage):
-                continue                                
+                continue
             if isinstance(m, ToolMessage) and m.tool_call_id not in valid_tool_ids:
-                continue                              
+                # Nur ToolMessages droppen, die keinem existierenden Call zugeordnet sind
+                continue
             cleaned.append(m)
 
         return cleaned
-    
 
     def get_format_msg(self) -> str:
         parser = JsonOutputParser(pydantic_object=AgentResponseFormat)
@@ -142,6 +167,7 @@ class Agent:
 
 
         history_raw = state["messages"]
+
         history     = self._clean_history_for_llm(history_raw)
 
 
@@ -194,8 +220,7 @@ class Agent:
         )
 
         llm, _  = self.init_llm_and_tools()
-        # messages_for_llm = self._remap_tool_call_ids_for_openai(messages_for_llm)
-        ic(messages_for_llm)
+
         raw_ai: AIMessage = llm.invoke(messages_for_llm)
  
 
@@ -219,11 +244,8 @@ class Agent:
     #                 return tool_call["function"]["name"]
     #     return "format_output"
     def custom_tools_condition(self, state: ComplexState) -> str:
-        ic("CUSTOM TOOL CALLS!!!")
         msg = state["messages"][-1]
-        ic(msg)
         if getattr(msg, "tool_calls", None):
-            ic("HAS TOOL CALLS")
             return "custom_tools"
         return "format_output"
 
@@ -353,7 +375,6 @@ class Agent:
             m for m in reversed(state["messages"])
             if isinstance(m, AIMessage) and not m.additional_kwargs.get("tool_calls")
         )
-        ic(last_ai)
         try:
             raw = last_ai.content
             if isinstance(raw, list):
@@ -367,7 +388,6 @@ class Agent:
             else:
                 structured = AgentResponseFormat.model_validate_json(json.dumps(raw))
         except Exception as e:
-            ic(e)
             fmt_llm   = self.init_formatter_llm()
             format_msg = self.get_format_msg()
             further_instruction = """

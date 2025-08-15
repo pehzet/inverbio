@@ -39,5 +39,5 @@ if __name__ == "__main__":
     checkpoint = get_mysql_checkpoint()
     print("MySQL Checkpoint setup successfully.")
 
-    ic(checkpoint)
+
 

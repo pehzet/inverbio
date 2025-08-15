@@ -174,8 +174,7 @@ def create_vector_store_chroma(
         else:  # .txt or .pdf fall back to a single chunk
             docs = _split_single(raw_text)
 
-    # Vector‑store build  
-    ic(len(docs), "documents")
+
 
     embeddings = OpenAIEmbeddings(model=TEXT_EMBEDDING_MODEL)
 

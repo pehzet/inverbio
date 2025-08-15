@@ -57,7 +57,7 @@ class AgentConfig:
             "name": "DefaultAgent",
             "description": "This is a default agent configuration.",
             "llm_provider": "openai",
-            "llm_model": "gpt-4o-mini",
+            "llm_model": "gpt-5-mini",
             "user_db": "postgres",
             "checkpoint_type": "postgres",
             "rag_db": "chroma",

@@ -53,6 +53,7 @@ class Agent:
         llm = llm.bind_tools(tools, tool_choice="auto")
         return llm, tools
     def init_formatter_llm(self, format_cls=AgentResponseFormat):
+   
         llm = get_llm(self.config.get("llm_provider","openai"),
                       "gpt-4.1-nano")
                     # self.config.get("llm_model","gpt-4o-mini")) # TODO SPECIFY AS PARAMETER
@@ -120,7 +121,20 @@ class Agent:
                 output_schema   = output_schema,
             ).to_messages()
         return base_sys 
-    
+    def _remap_tool_call_ids_for_openai(self, messages):
+        """Mappt ToolMessage.tool_call_id (call_*) auf die von OpenAI erwarteten fc_* IDs."""
+        id_map = {}
+        out = []
+        for m in messages:
+            if isinstance(m, AIMessage):
+                mapping = (m.additional_kwargs or {}).get("__openai_function_call_ids__")
+                if isinstance(mapping, dict):
+                    id_map.update(mapping)
+            if isinstance(m, ToolMessage) and m.tool_call_id in id_map:
+                out.append(m.model_copy(update={"tool_call_id": id_map[m.tool_call_id]}))
+            else:
+                out.append(m)
+        return out
     @log_execution()
     def agent(self, state: ComplexState):
         system_message = self.get_system_message(state)
@@ -137,42 +151,53 @@ class Agent:
         history_before_last = history[:last_user_idx]
         last_user           = history[last_user_idx]
         history_after_last  = history[last_user_idx+1:]
+        summary_msg = []
+        if state.get("summary"):
+            summary_msg = [SystemMessage(
+                content=f"<SUMMARY>\n{state['summary']}\n</SUMMARY>"
+            )]
+        context = state.get("context", {})
+        gen_ctx_msg = []
+        if context and context.get("location"):
+            gen_ctx_payload = {
+                "mentioned_products": context.get("mentioned_products", []),
+                "location":           context.get("location"),
 
-
-        gen_ctx_payload = {
-            "mentioned_products": state["context"].get("mentioned_products", []),
-            "location":           state["context"].get("location"),
-    
         }
+            gen_ctx_msg = SystemMessage(
+                content=f"<GEN-CONTEXT>\n{json.dumps(gen_ctx_payload, ensure_ascii=False)}\n</GEN-CONTEXT>",
+                additional_kwargs={"internal": True}
+            )
+            gen_ctx_msg = [gen_ctx_msg]
 
-        gen_ctx_msg = SystemMessage(
-            content=f"<GEN-CONTEXT>\n{json.dumps(gen_ctx_payload, ensure_ascii=False)}\n</GEN-CONTEXT>",
-            additional_kwargs={"internal": True}
-        )
+        cur_ctx_msg = []
+        if context and context.get("current_products"):
+            cur_ctx_payload = {
+                "current_products": context.get("current_products", []),
+                "timestamp_utc":    context.get("last_message_utc"),
+            }
 
-
-        cur_ctx_payload = {
-            "current_products": state["context"].get("current_products", []),
-            "timestamp_utc":    state["context"].get("last_message_utc"),
-        }
-
-        cur_ctx_msg = SystemMessage(
-            content=f"<CURRENT-CONTEXT>\n{json.dumps(cur_ctx_payload, ensure_ascii=False)}\n</CURRENT-CONTEXT>",
-            additional_kwargs={"internal": True}
-        )
-
+            cur_ctx_msg = SystemMessage(
+                content=f"<CURRENT-CONTEXT>\n{json.dumps(cur_ctx_payload, ensure_ascii=False)}\n</CURRENT-CONTEXT>",
+                additional_kwargs={"internal": True}
+            )
+            cur_ctx_msg = [cur_ctx_msg]
 
         messages_for_llm = (
             system_message +
-            [gen_ctx_msg] +
+            summary_msg +
+            gen_ctx_msg +
             history_before_last +
-            [cur_ctx_msg, last_user] +   #  ← Current Context direkt vor User
+            cur_ctx_msg +   #  ← Current Context direkt vor User
+            [last_user] + # last user message
             history_after_last # required for tool calls to work properly
         )
 
         llm, _  = self.init_llm_and_tools()
+        # messages_for_llm = self._remap_tool_call_ids_for_openai(messages_for_llm)
+        ic(messages_for_llm)
         raw_ai: AIMessage = llm.invoke(messages_for_llm)
-     
+ 
 
         return {
             "messages": [raw_ai],
@@ -194,10 +219,15 @@ class Agent:
     #                 return tool_call["function"]["name"]
     #     return "format_output"
     def custom_tools_condition(self, state: ComplexState) -> str:
+        ic("CUSTOM TOOL CALLS!!!")
         msg = state["messages"][-1]
+        ic(msg)
         if getattr(msg, "tool_calls", None):
+            ic("HAS TOOL CALLS")
             return "custom_tools"
         return "format_output"
+
+
     def get_format_instructions(self, pydantic_object=AgentResponseFormat) -> str:
         parser = JsonOutputParser(pydantic_object=pydantic_object)
         return parser.get_format_instructions()
@@ -323,9 +353,11 @@ class Agent:
             m for m in reversed(state["messages"])
             if isinstance(m, AIMessage) and not m.additional_kwargs.get("tool_calls")
         )
-    
+        ic(last_ai)
         try:
             raw = last_ai.content
+            if isinstance(raw, list):
+                raw = raw[0]["text"]
             if raw.startswith("```"):
                 raw = raw.strip("`").split("\n", 1)[1]  
             if isinstance(raw, str):
@@ -334,7 +366,8 @@ class Agent:
                 structured = AgentResponseFormat.model_validate(raw)
             else:
                 structured = AgentResponseFormat.model_validate_json(json.dumps(raw))
-        except ValidationError:
+        except Exception as e:
+            ic(e)
             fmt_llm   = self.init_formatter_llm()
             format_msg = self.get_format_msg()
             further_instruction = """
@@ -469,6 +502,7 @@ class Agent:
         # --------- Compile ----------
         cp = get_checkpoint(type=self.config.get("checkpoint_type", "sqlite"))
         graph = agent_flow.compile(checkpointer=cp)
+
         return graph
     def get_graph(self, force_new=False) -> CompiledStateGraph:
         if force_new or self.graph is None:

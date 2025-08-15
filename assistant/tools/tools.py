@@ -5,6 +5,7 @@ from langgraph.prebuilt import ToolNode
 from assistant.tools.farmely.farmely_api_langchain import fetch_product_stock
 from assistant.tools.internal.get_product_information import get_product_information_by_id
 from assistant.tools.internal.get_producer_information import get_producer_information_by_identifier
+from assistant.tools.internal.get_overview_of_product_categories import get_category_counts, get_products_per_categorie
 def get_retriever_tool(tool_name:str, db:str, **kwargs) -> Tool:
     if tool_name == "retrieve_products":
         retriever = get_vector_store(db, **kwargs)
@@ -29,6 +30,10 @@ def get_tool(name:str, **kwargs) -> Tool:
         return get_product_information_by_id
     elif name == "get_producer_information_by_identifier":
         return get_producer_information_by_identifier
+    elif name == "get_category_counts":
+        return get_category_counts
+    elif name == "get_all_products_per_categorie":
+        return get_products_per_categorie
     else:
         raise ValueError(f"Tool '{name}' not recognized.")
     
@@ -38,6 +43,8 @@ def get_farmely_tools() -> list[Tool]:
         get_tool("fetch_product_stock"),
         get_tool("get_product_information_by_id"),
         get_tool("get_producer_information_by_identifier"),
+        get_tool("get_category_counts"),
+        get_tool("get_all_products_per_categorie"),
     ]
     return tools
 

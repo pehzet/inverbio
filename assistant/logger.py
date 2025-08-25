@@ -75,12 +75,13 @@ def log_execution(
                 result = func(*args, **kwargs)
                 log.log(
                     level_success,
-                    "Function '%s' executed successfully. args=%r, kwargs=%r, duration=%.2fms",
-                    func.__name__, args, kwargs, (time.time() - _start) * 1000
+                    "Function '%s' executed successfully. duration=%.2fms",
+                    func.__name__,  (time.time() - _start) * 1000
                 )
                 return result
-            except Exception:
-                log.exception("Exception in function '%s'", func.__name__)
+            except Exception as e:
+                log.error("Function '%s' failed: %s",
+                          func.__name__, e.__class__.__name__, exc_info=True)
                 # Exception is re-raised to allow callers to handle it
                 raise
 

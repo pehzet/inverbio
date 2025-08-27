@@ -61,13 +61,3 @@ def get_all_products_by_supplier(name: str) -> list[dict]:
     rows = cursor.fetchall()
     conn.close()
     return [dict(row) for row in rows]
-if __name__ == "__main__":
-    # # Example usage
-    # product_id = 10 
-    # product = get_product_information_by_id(product_id)
-    # if product:
-    #     print(f"Product found: {product}")
-    # else:
-    #     print(f"No product found with ID {product_id}.")
-    prods = get_all_products_by_supplier("pinkus")
-    print(f"Products: {prods}")

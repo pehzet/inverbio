@@ -5,6 +5,13 @@ import json
 from typing import Any
 from langchain_core.tools import tool
 #    Otherwise you can get all producers by setting identifier to * (string) or all (string). 
+
+def _get_connection():
+    db_path = Path("producers_db/producers.db")
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    return conn
+
 @tool
 def get_producer_information_by_identifier(identifier:Any) -> dict:
     """
@@ -17,9 +24,7 @@ def get_producer_information_by_identifier(identifier:Any) -> dict:
     dict: A dictionary containing the producer's information, or a message if not found.
 
     """
-    db_path = Path("producers_db/producers.db")
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row 
+    conn = _get_connection()
     cursor = conn.cursor()
 
     if isinstance(identifier, int):
@@ -35,13 +40,26 @@ def get_producer_information_by_identifier(identifier:Any) -> dict:
         return json.dumps(producers, indent=4, ensure_ascii=False)
     else:
         return f"No producer found with the given identifier {identifier}."
+
+
     
+@tool
+def get_all_producer_names() -> list[str]:
+    """
+    Retrieve names of all producers from the database.
+    Returns:
+        list[str]: A list of all producer names.
+    """
+    conn = _get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT DISTINCT name FROM producers")
+    rows = cursor.fetchall()
+    conn.close()
+    return json.dumps([dict(row).get("name") for row in rows], ensure_ascii=False)
+
+
 if __name__ == "__main__":
-    # Example usage
-    # identifier = 1  # Replace with the actual producer ID or name you want to retrieve
-    identifier = "TerraSana Natuurvoeding B.V."
-    producer = get_producer_information_by_identifier(identifier)
-    if producer:
-        print(f"Producer found: {producer}")
-    else:
-        print(f"No producer found with identifier {identifier}.")
+    alle = get_all_producer_names()
+    print(alle)
+    print(len(alle))

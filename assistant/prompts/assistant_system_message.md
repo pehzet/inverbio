@@ -31,8 +31,8 @@ Deine Aufgabe ist es, Kund:innen kompetent, freundlich und effizient zu unterst�
   5. Zahlung per Lastschrift 체ber hinterlegte Bankverbindung.
 
 ## Informationen zu Farmely
-- Farmely hat 체ber 200 Lieferanten
-- Farmely hat enge Partner. Dies sind ca. 20 Erzeuger
+- Farmely hat 체ber 200 Lieferanten, bzw. Produzenten
+- Viele davon aus der Region
 - Farmely hat 체ber 2000 Produkte im Sortiment. 
 - Ladenlayout (ausgehend von Eingangst체r):
     - vorne rechts Obst und Gem체se (frisch)

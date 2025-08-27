@@ -14,14 +14,25 @@ def list_all_tables():
     tables = [row[0] for row in cursor.fetchall()]
     conn.close()
     return tables
+
+def _get_connection():
+    db_path = Path("products_db/products.db")
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row 
+    return conn
+    
 @tool
 def get_product_information_by_id(product_id: int) -> dict:
     """
     Retrieve a product by its ID from the database.
+
+    Args:
+        product_id (int): The ID of the product to retrieve.
+
+    Returns:
+        dict: The product information as a dictionary.
     """
-    db_path = Path("products_db/products.db")
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row 
+    conn = _get_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM products WHERE id = ?", (product_id,))
     product = cursor.fetchone()
@@ -32,20 +43,31 @@ def get_product_information_by_id(product_id: int) -> dict:
     else:
         return f"No product found with the given ID {product_id}."
 
+@tool
+def get_all_products_by_supplier(name: str) -> list[dict]:
+    """
+    returns all products by a specific supplier as a list of dicts. 
+    Searches with a LIKE %name% in the field "Hersteller" because Supplier is not listet explizitly
 
+    Args:
+        name (str): The name of the supplier to search for.
+    
+    Returns:
+        list[dict]: A list of products from the specified supplier.
+    """
+    conn = _get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM products WHERE Hersteller LIKE ? COLLATE NOCASE", (f"%{name}%",))
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
 if __name__ == "__main__":
-    # Example usage
-    product_id = 10  # Replace with the actual product ID you want to retrieve
-    product = get_product_information_by_id(product_id)
-    if product:
-        print(f"Product found: {product}")
-    else:
-        print(f"No product found with ID {product_id}.")
-    # db_path = Path("products_db/products.db")
-    # conn = sqlite3.connect(db_path)
-    # cursor = conn.cursor()
-    # cursor.execute("SELECT * FROM products LIMIT 1;")
-    # products = cursor.fetchall()
-    # products_json = [dict(zip([column[0] for column in cursor.description], row)) for row in products]
-    # conn.close()
-    # print(f"First 10 products in the database: {products_json}")
+    # # Example usage
+    # product_id = 10 
+    # product = get_product_information_by_id(product_id)
+    # if product:
+    #     print(f"Product found: {product}")
+    # else:
+    #     print(f"No product found with ID {product_id}.")
+    prods = get_all_products_by_supplier("pinkus")
+    print(f"Products: {prods}")

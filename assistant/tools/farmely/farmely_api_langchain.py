@@ -26,12 +26,12 @@ def _get_product_id_by_name(product_name: str) -> str:
 
 
 @tool
+@log_execution()
 def fetch_product_stock(product_id: str):
     """
     Fetches the stock of a product by its ID. 
 
-
-    :param product_id: The product ID 
+    :param product_id: The product ID
     :return: JSON string with stock information or None on error
     """
     print(f"Fetching stock for product ID: {product_id}")

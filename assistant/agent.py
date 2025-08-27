@@ -15,7 +15,7 @@ from assistant.schemas import AgentResponseFormat
 from assistant.logger import log_execution
 from pathlib import Path
 import uuid
-from typing import Tuple
+from typing import Iterable, Tuple
 from assistant.user.database import get_user_db
 from langsmith import Client
 from assistant.tools import get_farmely_tools, get_retriever_tool, get_tool
@@ -31,13 +31,16 @@ from assistant.agent_config import AgentConfig
 from barcode.barcode import get_product_by_barcode, get_products_by_barcodes
 import pytz
 from pydantic import ValidationError
+from assistant.suggestion_utils import _collect_all_suggestions, _make_suggestions_msg_all
+from assistant.prompt_utils import get_prompt_template_with_placeholders
 class Agent:
     def __init__(self, config:AgentConfig = None):
         self.config = config or AgentConfig.as_default()
         self.graph = None
         self.user_db = get_user_db(self.config.get("user_db", "sqlite"), data_source_from_env=True)
         self.langsmith_client = Client()
-
+        self.current_system_msg = None
+        self._last_system_msg_fetch = None
 
     def get_langsmith_client(self) -> Client:
         return self.langsmith_client
@@ -124,28 +127,51 @@ class Agent:
         )
         return format_msg
 
-    @log_execution()
-    def get_system_message(self, state: ComplexState) -> SystemMessage:
-        """
-        Returns the system message for the assistant, including current date and time.
-        """
+    # @log_execution()
+    # def get_system_message(self, state: ComplexState) -> SystemMessage:
+    #     """
+    #     Returns the system message for the assistant, including current date and time.
+    #     """
 
         
-        # Define Berlin timezone so it works in any timezone
-        berlin_tz = pytz.timezone('Europe/Berlin')
-        now_berlin = datetime.datetime.now(berlin_tz)
+    #     # Define Berlin timezone so it works in any timezone
+    #     berlin_tz = pytz.timezone('Europe/Berlin')
+    #     now_berlin = datetime.datetime.now(berlin_tz)
 
-        current_day = now_berlin.strftime("%A, %d.%m.%Y")
-        current_time = now_berlin.strftime("%H:%M")
-        output_schema = self.get_format_instructions()
-        base_sys = self.get_prompt_from_langsmith("assistant-system-message")\
-            .format_prompt(
-                user_name       = state["user"].get("name", "Anonym"),
-                current_day     = current_day,
-                current_time    = current_time,
-                output_schema   = output_schema,
-            ).to_messages()
-        return base_sys 
+    #     current_day = now_berlin.strftime("%A, %d.%m.%Y")
+    #     current_time = now_berlin.strftime("%H:%M")
+    #     output_schema = self.get_format_instructions()
+    #     base_sys = self.get_prompt_from_langsmith("assistant-system-message")\
+    #         .format_prompt(
+    #             user_name       = state["user"].get("name", "Anonym"),
+    #             current_day     = current_day,
+    #             current_time    = current_time,
+    #             output_schema   = output_schema,
+    #         ).to_messages()
+    #     return base_sys 
+    @log_execution()
+    def get_system_message(self, state: ComplexState) -> SystemMessage:
+        # fetch system message every 15 minutes
+        if not self._last_system_msg_fetch or (time.time() - self._last_system_msg_fetch) > 900:
+            berlin_tz = pytz.timezone('Europe/Berlin')
+            now_berlin = datetime.datetime.now(berlin_tz)
+
+            current_day = now_berlin.strftime("%A, %d.%m.%Y")
+            current_time = now_berlin.strftime("%H:%M")
+            output_schema = self.get_format_instructions()
+            template = get_prompt_template_with_placeholders(
+                "assistant_system_message",
+                user_name=state["user"].get("name", "Anonym"),
+                current_day=current_day,
+                current_time=current_time,
+                output_schema=output_schema,
+            )
+            system_msg = [SystemMessage(content=template, additional_kwargs={"internal": True})]
+            self.current_system_msg = system_msg
+            self._last_system_msg_fetch = time.time()
+        else:
+            system_msg = self.current_system_msg
+        return system_msg
     def _remap_tool_call_ids_for_openai(self, messages):
         """Mappt ToolMessage.tool_call_id (call_*) auf die von OpenAI erwarteten fc_* IDs."""
         id_map = {}
@@ -161,15 +187,18 @@ class Agent:
                 out.append(m)
         return out
     @log_execution()
-    def agent(self, state: ComplexState):
+    def respond(self, state: ComplexState):
+
+
         system_message = self.get_system_message(state)
 
 
 
         history_raw = state["messages"]
 
-        history     = self._clean_history_for_llm(history_raw)
-
+        history = self._clean_history_for_llm(history_raw)
+        all_suggestions = _collect_all_suggestions(history)
+        suggestions_msg = _make_suggestions_msg_all(all_suggestions)
 
         last_user_idx = max(
             i for i, m in enumerate(history) if isinstance(m, HumanMessage)
@@ -214,11 +243,12 @@ class Agent:
             summary_msg +
             gen_ctx_msg +
             history_before_last +
-            cur_ctx_msg +   #  ← Current Context direkt vor User
+            ( [suggestions_msg] if suggestions_msg else [] ) +
+            cur_ctx_msg +   #  Current Context direkt vor User
             [last_user] + # last user message
             history_after_last # required for tool calls to work properly
         )
-
+        
         llm, _  = self.init_llm_and_tools()
 
         raw_ai: AIMessage = llm.invoke(messages_for_llm)
@@ -364,30 +394,53 @@ class Agent:
        
         return {"context": new_ctx} if new_ctx else {}
 
-    def _strip_tool_calls_none(self, msg: AIMessage) -> AIMessage:
-        kws = dict(msg.additional_kwargs or {})
-        if kws.get("tool_calls") is None:
-            kws.pop("tool_calls", None)
-        return msg.model_copy(update={"additional_kwargs": kws})
-
+    @log_execution()
     def format_output(self, state: ComplexState):
         last_ai = next(
             m for m in reversed(state["messages"])
             if isinstance(m, AIMessage) and not m.additional_kwargs.get("tool_calls")
         )
+        # raw = last_ai.content
+        # try:
+        #     if isinstance(raw, list):
+        #         raw = raw[0]["text"]
+        #     if raw.startswith("```"):
+        #         raw = raw.strip("`").split("\n", 1)[1]  
+        #     if isinstance(raw, str):
+        #         structured = AgentResponseFormat.model_validate_json(raw)
+        #     elif isinstance(raw, dict):
+        #         structured = AgentResponseFormat.model_validate(raw)
+        #     else:
+        #         structured = AgentResponseFormat.model_validate_json(json.dumps(raw))
+        
+        raw = last_ai.content
         try:
-            raw = last_ai.content
             if isinstance(raw, list):
-                raw = raw[0]["text"]
-            if raw.startswith("```"):
-                raw = raw.strip("`").split("\n", 1)[1]  
+                raw = raw[0].get("text", "")
+
             if isinstance(raw, str):
-                structured = AgentResponseFormat.model_validate_json(raw)
+                raw_str = raw.strip()
+
+                # Falls Antwort im Codeblock zurückkommt
+                if raw_str.startswith("```"):
+                    raw_str = raw_str.strip("`").split("\n", 1)[1]
+
+                # Prüfen ob es wie JSON aussieht
+                if raw_str.startswith("{") or raw_str.startswith("["):
+                    structured = AgentResponseFormat.model_validate_json(raw_str)
+                else:
+                    ic(raw_str)
+                    raise ValueError("Antwort ist kein JSON, sondern freier Text.")
+
             elif isinstance(raw, dict):
                 structured = AgentResponseFormat.model_validate(raw)
+
             else:
+                # alles andere serialisieren
                 structured = AgentResponseFormat.model_validate_json(json.dumps(raw))
         except Exception as e:
+            print("Format Fallback triggered")
+
             fmt_llm   = self.init_formatter_llm()
             format_msg = self.get_format_msg()
             further_instruction = """
@@ -396,17 +449,17 @@ class Agent:
             Beides ohne Anführungszeichen. Dies ist wichtig, damit es im Frontend korrekt dargestellt werden kann.
             """
             format_msg.content += further_instruction
-            clean_ai  = self._strip_tool_calls_none(last_ai)
+            # clean_ai  = self._strip_tool_calls_none(last_ai)
 
             # Optional: statt AIMessage → HumanMessage(content=clean_ai.content)
             # human_last = HumanMessage(content=clean_ai.content)
-            structured = fmt_llm.invoke([format_msg, clean_ai])
-
+            structured = fmt_llm.invoke([format_msg, last_ai])
+        sugs = structured.suggestions or []  # None -> []
         ai_msg = AIMessage(
             content=structured.response,
             additional_kwargs={
                 "internal": True,
-                "suggestions": getattr(structured, "suggestions", None),
+                "suggestions": sugs,
             },
         )
         return {
@@ -478,7 +531,7 @@ class Agent:
         # --------- Nodes, die nichts mit Tools zu tun haben ----------
         agent_flow.add_node("load_user_profile", self.load_user_profile)
         agent_flow.add_node("extract_context",   self.extract_context)
-        agent_flow.add_node("agent",             self.agent)            # LLM / Tool-Caller
+        agent_flow.add_node("respond",             self.respond)            # LLM / Tool-Caller
         agent_flow.add_node("format_output",     self.format_output)    # structured output
         agent_flow.add_node("summarize_conversation", summarize_conversation)
 
@@ -491,12 +544,12 @@ class Agent:
         agent_flow.set_entry_point("load_user_profile")
 
         agent_flow.add_edge("load_user_profile", "extract_context")
-        agent_flow.add_edge("extract_context",   "agent")
+        agent_flow.add_edge("extract_context",   "respond")
 
-        # Nur ein Conditional-Router ab "agent"
+        # Nur ein Conditional-Router ab "respond"
         # custom_tools_condition muss "custom_tools" oder "format_output" (oder END) zurückgeben
         agent_flow.add_conditional_edges(
-            "agent",
+            "respond",
             self.custom_tools_condition,
             {
                 "custom_tools":   "custom_tools",   # führt Tool-Call(s) aus
@@ -506,7 +559,7 @@ class Agent:
         )
 
         # Nach jedem Tool-Call zurück zum LLM
-        agent_flow.add_edge("custom_tools", "agent")
+        agent_flow.add_edge("custom_tools", "respond")
 
         # --------- Zusammenfassung nach dem Formatieren ----------
         agent_flow.add_conditional_edges(
@@ -677,7 +730,7 @@ class Agent:
         result = graph.invoke(graph_input, config)
         message = result["messages"][-1]
         response = message.content
-        suggestions = message.additional_kwargs.get("suggestions", [])
+        suggestions = (message.additional_kwargs.get("suggestions") or [])
         return response, suggestions, thread_id
 
 

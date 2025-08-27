@@ -30,7 +30,7 @@ def get_producer_information_by_identifier(identifier:Any) -> dict:
     if isinstance(identifier, int):
         cursor.execute("SELECT * FROM producers WHERE id = ?", (identifier,))
     elif isinstance(identifier, str):
-        cursor.execute("SELECT * FROM producers WHERE name = ?", (identifier,))
+        cursor.execute("SELECT * FROM producers WHERE name LIKE ?", (f"%{identifier}%",))
     producers = cursor.fetchall()
 
     conn.close()
@@ -60,6 +60,10 @@ def get_all_producer_names() -> list[str]:
 
 
 if __name__ == "__main__":
-    alle = get_all_producer_names()
-    print(alle)
-    print(len(alle))
+    conn = _get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM producers where description IS NOT NULL")
+    rows = cursor.fetchall()
+    conn.close()
+    for row in rows:
+        print(dict(row))

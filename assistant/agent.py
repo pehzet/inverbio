@@ -151,8 +151,8 @@ class Agent:
     #     return base_sys 
     @log_execution()
     def get_system_message(self, state: ComplexState) -> SystemMessage:
-        # fetch system message every 15 minutes
-        if not self._last_system_msg_fetch or (time.time() - self._last_system_msg_fetch) > 900:
+        # fetch system message every 15 minutes -> for TdN set to 1 Min. So its nearly on time
+        if not self._last_system_msg_fetch or (time.time() - self._last_system_msg_fetch) > 60:
             berlin_tz = pytz.timezone('Europe/Berlin')
             now_berlin = datetime.datetime.now(berlin_tz)
 

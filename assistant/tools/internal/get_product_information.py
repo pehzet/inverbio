@@ -44,7 +44,7 @@ def get_product_information_by_id(product_id: int) -> dict:
         return f"No product found with the given ID {product_id}."
 
 @tool
-def get_all_products_by_supplier(name: str) -> list[dict]:
+def get_all_products_by_supplier(name: str, only_count: bool = False) -> list[dict]:
     """
     returns all products  by a specific supplier as a list of dicts. 
     Searches with a LIKE %name% in the field "Hersteller" because Supplier is not listet explizitly.
@@ -52,22 +52,27 @@ def get_all_products_by_supplier(name: str) -> list[dict]:
 
     Args:
         name (str): The name of the supplier to search for.
-    
+        only_count (bool): If True, only the count of products is returned.
+
     Returns:
         list[dict]: A list of products from the specified supplier.
     """
     conn = _get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT id, Name, Beschreibung FROM products WHERE Hersteller LIKE ? COLLATE NOCASE LIMIT 100", (f"%{name}%",))
+    cursor.execute("SELECT id, Name, Beschreibung FROM products WHERE Hersteller LIKE ? COLLATE NOCASE ORDER BY RANDOM()", (f"%{name}%",))
     rows = cursor.fetchall()
     conn.close()
+    if only_count:
+        return len(rows)
+    if len(rows) > 100:
+        rows = rows[:100]
     return [dict(row) for row in rows]
 
 if __name__ == "__main__":
-    prods = get_all_products_by_supplier("Weiling")
+    prods = get_all_products_by_supplier("Weiling", only_count=True)
     # print(prods)
-    # print(len(prods))
-    prods_str = json.dumps(prods, indent=4, ensure_ascii=False)
-    print(prods_str)
-    with open("products_weiling_100.json", "w", encoding="utf-8") as f:
-        f.write(prods_str)
+    print(len(prods))
+    # prods_str = json.dumps(prods, indent=4, ensure_ascii=False)
+    # print(prods_str)
+    # with open("products_weiling_100.json", "w", encoding="utf-8") as f:
+    #     f.write(prods_str)

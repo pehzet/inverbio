@@ -56,6 +56,8 @@ def get_all_products_by_supplier(name: str, only_count: bool = False) -> list[di
 
     Returns:
         list[dict]: A list of products from the specified supplier.
+        Returns an empty list if no products are found.
+        Returns only the count of products if only_count is True.
     """
     conn = _get_connection()
     cursor = conn.cursor()

@@ -46,7 +46,7 @@ def get_product_information_by_id(product_id: int) -> dict:
 @tool
 def get_all_products_by_supplier(name: str) -> list[dict]:
     """
-    returns all products by a specific supplier as a list of dicts. 
+    returns all products (maximum 10) by a specific supplier as a list of dicts. 
     Searches with a LIKE %name% in the field "Hersteller" because Supplier is not listet explizitly
 
     Args:
@@ -57,7 +57,7 @@ def get_all_products_by_supplier(name: str) -> list[dict]:
     """
     conn = _get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM products WHERE Hersteller LIKE ? COLLATE NOCASE", (f"%{name}%",))
+    cursor.execute("SELECT * FROM products WHERE Hersteller LIKE ? COLLATE NOCASE LIMIT 10", (f"%{name}%",))
     rows = cursor.fetchall()
     conn.close()
     return [dict(row) for row in rows]

@@ -43,7 +43,7 @@ def get_product_information_by_id(product_id: int) -> dict:
     else:
         return f"No product found with the given ID {product_id}."
 
-# @tool
+@tool
 def get_all_products_by_supplier(name: str) -> list[dict]:
     """
     returns all products  by a specific supplier as a list of dicts. 
@@ -69,3 +69,5 @@ if __name__ == "__main__":
     # print(len(prods))
     prods_str = json.dumps(prods, indent=4, ensure_ascii=False)
     print(prods_str)
+    with open("products_weiling_100.json", "w", encoding="utf-8") as f:
+        f.write(prods_str)

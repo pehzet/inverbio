@@ -43,11 +43,12 @@ def get_product_information_by_id(product_id: int) -> dict:
     else:
         return f"No product found with the given ID {product_id}."
 
-@tool
+# @tool
 def get_all_products_by_supplier(name: str) -> list[dict]:
     """
-    returns all products (maximum 10) by a specific supplier as a list of dicts. 
-    Searches with a LIKE %name% in the field "Hersteller" because Supplier is not listet explizitly
+    returns all products  by a specific supplier as a list of dicts. 
+    Searches with a LIKE %name% in the field "Hersteller" because Supplier is not listet explizitly.
+    Returns id, name and description per product. All in german. Limit is 100.
 
     Args:
         name (str): The name of the supplier to search for.
@@ -57,7 +58,14 @@ def get_all_products_by_supplier(name: str) -> list[dict]:
     """
     conn = _get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM products WHERE Hersteller LIKE ? COLLATE NOCASE LIMIT 10", (f"%{name}%",))
+    cursor.execute("SELECT id, Name, Beschreibung FROM products WHERE Hersteller LIKE ? COLLATE NOCASE LIMIT 100", (f"%{name}%",))
     rows = cursor.fetchall()
     conn.close()
     return [dict(row) for row in rows]
+
+if __name__ == "__main__":
+    prods = get_all_products_by_supplier("Weiling")
+    # print(prods)
+    # print(len(prods))
+    prods_str = json.dumps(prods, indent=4, ensure_ascii=False)
+    print(prods_str)

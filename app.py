@@ -144,10 +144,8 @@ def chat():
     content = data.get("content") or {}
     if content.get("msg") is None:
         return jsonify(error="Parameter 'content' with 'msg' is required."), 400
-    ic(content)
     raw_barcodes = _get_raw_barcodes_from_content(content)
     content["barcodes"] = raw_barcodes or []
-    ic(content)
     user = data.get("user", {})
     response, suggestions, thread_id = agent.chat(content, user)
     return jsonify(response=response, suggestions=suggestions, thread_id=thread_id), 200

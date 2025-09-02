@@ -418,7 +418,6 @@ class Agent:
                 if raw_str.startswith("{") or raw_str.startswith("["):
                     structured = AgentResponseFormat.model_validate_json(raw_str)
                 else:
-                    ic(raw_str)
                     raise ValueError("Antwort ist kein JSON, sondern freier Text.")
 
             elif isinstance(raw, dict):
@@ -657,10 +656,8 @@ class Agent:
         return messages_content
 
     def create_additional_context(self, state: StateSnapshot, content: dict, user: dict) -> str:
-        ic("create_additional_context CALLED")
         additional_context = {}
         barcode = content.get("barcode", None)
-        ic(barcode)
         if barcode:
             if isinstance(barcode, str):
                 products = get_product_by_barcode(barcode)
@@ -668,7 +665,6 @@ class Agent:
             else:
                 products = get_products_by_barcodes(barcode)
             if products:
-                ic(products)
                 additional_context["mentioned_products"] = products.values() if isinstance(products, dict) else products
                 additional_context["current_products"] = products.values() if isinstance(products, dict) else products
         return additional_context

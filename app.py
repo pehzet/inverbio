@@ -72,6 +72,16 @@ def _downscale_image(raw: bytes) -> bytes:
 def _files_to_b64(files):
     pass
 
+def _get_raw_barcodes_from_content(content: dict) -> list[str] | None:
+    """ Extrahiert die Barcodes aus dem gegebenen Content-Dictionary. """
+    barcodes = content.get("barcodes", [])
+    raw_barcodes = []
+    for barcode in barcodes:
+        if barcode.get("exists", False):
+            product = barcode.get("product", {})
+            raw_barcodes.append(product.get("barcode",  product.get("Barcode")))
+    return raw_barcodes
+
 agent_config = AgentConfig.as_default()
 agent = Agent(agent_config)
 
@@ -134,7 +144,10 @@ def chat():
     content = data.get("content") or {}
     if content.get("msg") is None:
         return jsonify(error="Parameter 'content' with 'msg' is required."), 400
-
+    ic(content)
+    raw_barcodes = _get_raw_barcodes_from_content(content)
+    content["barcodes"] = raw_barcodes or []
+    ic(content)
     user = data.get("user", {})
     response, suggestions, thread_id = agent.chat(content, user)
     return jsonify(response=response, suggestions=suggestions, thread_id=thread_id), 200

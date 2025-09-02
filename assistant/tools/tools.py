@@ -12,7 +12,8 @@ def get_retriever_tool(tool_name:str, db:str, **kwargs) -> Tool:
         retriever_tool = create_retriever_tool(
             retriever,
             "retrieve_products",
-            "Search for food products that Farmely sells and get information about them.",
+            """
+            Use this to get an Overview of the farmely products. This tool uses similarity search. The Informations here are compact. For detailed information, use the other tools afterwards.""",
         )
         return retriever_tool
     else:

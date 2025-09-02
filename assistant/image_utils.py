@@ -106,7 +106,7 @@ def create_msg_with_img(
     Erzeugt eine HumanMessage mit Text und optional einem oder mehreren Bildern.
     Unterstützt mehrere Bildtypen (png, jpg/jpeg, gif, webp, bmp, tiff, svg).
     """
-    content: list[dict] = [{"type": "text", "text": user_query}]
+    content: list[dict] = []
 
     if images:
         for img_str in images:
@@ -121,11 +121,15 @@ def create_msg_with_img(
         b64 = _encode_image(raw)
         data_url = _build_data_url(mime, b64)
         content.append(_make_image_content_item(data_url))
-
+    text = {"type": "text", "text": user_query}
+    content.append(text)
     return HumanMessage(content=content)
 if __name__ == "__main__":
-    with open("test_img.png", "rb") as image_file:
+    with open("assistant/graph.png", "rb") as image_file:
         image_data = image_file.read()
+
     msg = "What is in this image?"
-    msg_object = create_msg_with_img(msg, image_data)
+    b64 = base64.b64encode(image_data).decode("ascii")
+    msg_object = create_msg_with_img(msg, images=[b64])  # Liste von Strings!
+    print(msg_object)
 

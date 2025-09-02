@@ -6,6 +6,45 @@ from typing import Iterable, List, Dict, Any
 from icecream import ic
 import os
 PRODUCTS_DB_PATH = Path(os.environ.get("PRODUCT_DB_PATH", "products_db/products.db"))
+def _normalize_barcodes(value) -> list[str]:
+    """
+    Akzeptiert str | int | list/tuple/set gemischt und gibt eine eindeutige
+    Liste von Ziffernstrings zurück (EAN/UPC üblich 8–14 Stellen).
+    Nicht-Ziffern werden verworfen; Reihenfolge bleibt stabil.
+    """
+    if value is None:
+        return []
+    # in Sequenz verwandeln
+    if isinstance(value, (str, int)):
+        items = [value]
+    elif isinstance(value, (list, tuple, set)):
+        items = list(value)
+    else:
+        items = [value]
+
+    norm = []
+    for x in items:
+        if x is None:
+            continue
+        s = str(x).strip().replace(" ", "")
+        if not s:
+            continue
+        # nur Ziffern (gewöhnliche EAN/UPC)
+        if s.isdigit():
+            # optional: nur plausible Längen zulassen
+            if 8 <= len(s) <= 14:
+                norm.append(s)
+            else:
+                norm.append(s)  # oder weglassen, wenn du strikt sein willst
+    # Dedupe mit Reihenfolge
+    seen = set()
+    out = []
+    for s in norm:
+        if s not in seen:
+            seen.add(s)
+            out.append(s)
+    return out
+
 def _decode_row(row, parse_json: bool) -> Dict[str, Any]:
     d = dict(row)
     if parse_json:

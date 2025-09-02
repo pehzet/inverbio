@@ -1,11 +1,13 @@
 import os
 from langchain_openai import ChatOpenAI
+from sympy import content
 from assistant import state
 from assistant.llm_factory import get_llm
 from assistant.image_utils import create_msg_with_img
 from langgraph.prebuilt import ToolNode, tools_condition
 from assistant.state import ComplexState, get_checkpoint, get_value_from_state
 from assistant.summary import check_summary, summarize_conversation
+from barcode.barcode import _normalize_barcodes
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.state import CompiledStateGraph
 from langchain_core.messages import AIMessage, SystemMessage, HumanMessage, RemoveMessage, ToolMessage
@@ -201,7 +203,7 @@ class Agent:
         suggestions_msg = _make_suggestions_msg_all(all_suggestions)
 
         last_user_idx = max(
-            i for i, m in enumerate(history) if isinstance(m, HumanMessage)
+            i for i, m in enumerate(history) if (isinstance(m, HumanMessage) and not m.additional_kwargs.get("internal"))
         )
         history_before_last = history[:last_user_idx]
         last_user           = history[last_user_idx]
@@ -329,76 +331,63 @@ class Agent:
 
     def extract_context(self, state: ComplexState) -> Dict[str, Any]:
         """
-        Graph-node: pull situational facts from the *latest* HumanMessage
-        and patch them into `state.context`.
-
-        Currently implemented sources
-        -----------------------------
-        • `barcode`  – single str or list[str] in message.metadata
-        • `location` – optional str in message.metadata (e.g. store ID)
-        • automatic timestamp of the utterance
-
-        Behaviour
-        ---------
-        • If no new facts are found ➜ return {} (no state change).
-        • List-type values are *accumulated*: new items are appended to the
-        existing list (deduplicated) instead of overwritten.
-        • The node does **not** modify state in-place; it returns a patch.
+        NEU:
+        - Keine context-Felder mehr (mentioned/current_products).
+        - Stattdessen:
+            1) Letzte HumanMessage inhaltlich erweitern: "... gescannter barcode: {codes}"
+            2) Interne SystemMessage hinzufügen: "der User hat folgendes Produkt via barcode gesannt: {product}"
         """
 
- 
-        last_msg = next(
-            (m for m in reversed(state["messages"]) if isinstance(m, HumanMessage)),
-            None,
-        )
-        if last_msg is None:
-            return {}                     # defensive: should never happen
+        last_msg_idx = None
+        for i in range(len(state["messages"]) - 1, -1, -1):
+            if isinstance(state["messages"][i], HumanMessage):
+                last_msg_idx = i
+                break
+        if last_msg_idx is None:
+            return {}
 
+        last_msg: HumanMessage = state["messages"][last_msg_idx]
         meta = last_msg.metadata or {}
+        barcodes = _normalize_barcodes(meta.get("barcode"))
+        if not barcodes:
+            return {}
 
-        
-        new_ctx: Dict[str, Any] = {}
-
-  
-        barcode = meta.get("barcode")
-        if barcode:
-            mentioned: List[Dict[str, Any]] = []
-
-            if isinstance(barcode, str):
-                product = get_product_by_barcode(barcode)
+        # --- Produkte lookup (best effort) ---
+        mentioned = []
+        try:
+            if len(barcodes) == 1:
+                product = get_product_by_barcode(barcodes[0])
                 if product:
                     mentioned.append(product)
-
-            elif isinstance(barcode, list):
-                products = get_products_by_barcodes(barcode)    # may return dict
-
+            else:
+                products = get_products_by_barcodes(barcodes)
                 if products:
                     if isinstance(products, dict):
                         mentioned.extend(products.values())
                     else:
                         mentioned.extend(products)
+        except Exception as e:
+            # Nicht crashen, wir fügen dann nur die Barcode-Note hinzu
+            pass
+        internal_note = None
+        if mentioned:
+            internal_note = HumanMessage(
+                content=f"[INTERNAL ADDITIONAL MESSAGE] Der User hat folgendes Produkt via barcode gesannt: {mentioned}",
+                additional_kwargs={"internal": True},
+            )
+            # Patch: ersetze die letzte HumanMessage und füge die interne SystemMessage hinzu
+            new_messages = list(state["messages"])
+            if internal_note:
+                new_messages.insert(last_msg_idx + 1, internal_note)
 
-            if mentioned:
-                # accumulate with existing list (if any)
-                existing = state.get("context", {}).get("mentioned_products", [])
-                combined = {p["id"]: p for p in existing + mentioned}  # dedupe by id
-                new_ctx["mentioned_products"] = list(combined.values())
-                new_ctx["current_products"]   = mentioned              # focus set
-
-
-        if "location" in meta:
-            new_ctx["location"] = meta["location"]
-
-
-        new_ctx["last_message_utc"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
-       
-        return {"context": new_ctx} if new_ctx else {}
-
+            return {"messages": [internal_note]}
+        else:
+            return {}
     @log_execution()
     def format_output(self, state: ComplexState):
         last_ai = next(
             m for m in reversed(state["messages"])
-            if isinstance(m, AIMessage) and not m.additional_kwargs.get("tool_calls")
+            if isinstance(m, AIMessage) and not getattr(m, "tool_calls", None)
         )
         # raw = last_ai.content
         # try:
@@ -668,8 +657,10 @@ class Agent:
         return messages_content
 
     def create_additional_context(self, state: StateSnapshot, content: dict, user: dict) -> str:
+        ic("create_additional_context CALLED")
         additional_context = {}
         barcode = content.get("barcode", None)
+        ic(barcode)
         if barcode:
             if isinstance(barcode, str):
                 products = get_product_by_barcode(barcode)
@@ -677,6 +668,7 @@ class Agent:
             else:
                 products = get_products_by_barcodes(barcode)
             if products:
+                ic(products)
                 additional_context["mentioned_products"] = products.values() if isinstance(products, dict) else products
                 additional_context["current_products"] = products.values() if isinstance(products, dict) else products
         return additional_context
@@ -694,7 +686,12 @@ class Agent:
         """
         text   = content.get("msg", "")
         images = content.get("images", [])
-        barcode = content.get("barcode")          # optional
+        
+        barcode_raw = content.get("barcode", None)
+        if barcode_raw is None:
+            barcode_raw = content.get("barcodes", None)  # Plural fallback
+
+        normalized = _normalize_barcodes(barcode_raw)
 
         msg = (
             create_msg_with_img(text, images) if images
@@ -703,8 +700,8 @@ class Agent:
 
         # ➜ all identifiers / extra facts go into metadata
         meta = {"user_id": user_id}
-        if barcode:
-            meta["barcode"] = barcode
+        if normalized:
+            meta["barcode"] = normalized[0] if len(normalized) == 1 else normalized
 
         msg = msg.model_copy(update={"metadata": meta})
        
@@ -734,18 +731,19 @@ class Agent:
         return response, suggestions, thread_id
 
 
-if __name__ == "__main__":
-    agent = Agent()
-    thread_id = None
-    msg = "Habt ihr Helles von Friedensreiter?"
-    result, thread_id = agent.chat(msg, thread_id=thread_id)
-    print(thread_id)
-    print("Assistant:", result)
+# if __name__ == "__main__":
+#     agent = Agent()
+#     thread_id = None
+#     msg = "Habt ihr Helles von Friedensreiter?"
+#     result, thread_id = agent.chat(msg, thread_id=thread_id)
+#     print(thread_id)
+#     print("Assistant:", result)
 
-    while True:
-        print("Type 'exit' to quit.")
-        msg = input("User: ")
-        if msg.lower() in ["exit", "quit"]:
-            break
-        result, thread_id = agent.chat(msg, thread_id=thread_id)
-        print("Assistant:", result)
+#     while True:
+#         print("Type 'exit' to quit.")
+#         msg = input("User: ")
+#         if msg.lower() in ["exit", "quit"]:
+#             break
+#         result, thread_id = agent.chat(msg, thread_id=thread_id)
+#         print("Assistant:", result)
+

@@ -14,7 +14,13 @@ def list_all_tables():
     tables = [row[0] for row in cursor.fetchall()]
     conn.close()
     return tables
-
+def get_column_names(table: str):
+    conn = _get_connection()
+    cur = conn.cursor()
+    cur.execute(f"PRAGMA table_info({table})")
+    columns = [col[1] for col in cur.fetchall()]  # Spaltenname steckt in Index 1
+    conn.close()
+    return columns
 def _get_connection():
     db_path = Path("products_db/products.db")
     conn = sqlite3.connect(db_path)
@@ -70,11 +76,3 @@ def get_all_products_by_supplier(name: str, only_count: bool = False) -> list[di
         rows = rows[:100]
     return [dict(row) for row in rows]
 
-if __name__ == "__main__":
-    prods = get_all_products_by_supplier("Weiling", only_count=True)
-    # print(prods)
-    print(len(prods))
-    # prods_str = json.dumps(prods, indent=4, ensure_ascii=False)
-    # print(prods_str)
-    # with open("products_weiling_100.json", "w", encoding="utf-8") as f:
-    #     f.write(prods_str)

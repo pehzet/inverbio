@@ -259,7 +259,7 @@ class Agent:
 
         return {
             "messages": [raw_ai],
-            "messages_history": [last_user, raw_ai],
+            "messages_history": [last_user],
         }
 
     # def custom_tools_condition(self, state: ComplexState) -> str:
@@ -390,19 +390,7 @@ class Agent:
             m for m in reversed(state["messages"])
             if isinstance(m, AIMessage) and not getattr(m, "tool_calls", None)
         )
-        # raw = last_ai.content
-        # try:
-        #     if isinstance(raw, list):
-        #         raw = raw[0]["text"]
-        #     if raw.startswith("```"):
-        #         raw = raw.strip("`").split("\n", 1)[1]  
-        #     if isinstance(raw, str):
-        #         structured = AgentResponseFormat.model_validate_json(raw)
-        #     elif isinstance(raw, dict):
-        #         structured = AgentResponseFormat.model_validate(raw)
-        #     else:
-        #         structured = AgentResponseFormat.model_validate_json(json.dumps(raw))
-        
+  
         raw = last_ai.content
         try:
             if isinstance(raw, list):
@@ -444,17 +432,18 @@ class Agent:
             # human_last = HumanMessage(content=clean_ai.content)
             structured = fmt_llm.invoke([format_msg, last_ai])
         sugs = structured.suggestions or []  # None -> []
-        ai_msg = AIMessage(
-            content=structured.response,
-            additional_kwargs={
+        ai_msg = last_ai.model_copy(update={
+            "content": structured.response,
+            "additional_kwargs": {
+                **((getattr(last_ai, "additional_kwargs", {}) or {})),
                 "internal": True,
                 "suggestions": sugs,
             },
-        )
+        })
         return {
             "structured_response": structured.model_dump(),
             "messages": [ai_msg],
-            "messages_history":  [last_ai, ai_msg], # typically no HumanMessage here because user had no turn # gpt suggested state.get("messages_history", []) 
+            "messages_history":  [ai_msg], # typically no HumanMessage here because user had no turn # gpt suggested state.get("messages_history", []) 
         }
 
     # def create_graph(self) -> CompiledStateGraph:
@@ -681,10 +670,23 @@ class Agent:
                 "dev_notes": dev_notes,
             }
             messages_content.append(entry)
-
+        messages_content = self._dedupe_by_message_id(messages_content)
         return messages_content
 
-
+    def _dedupe_by_message_id(self, entries):
+        out = []
+        idx_by_mid = {}  # message_id -> index in out
+        for e in entries:
+            if e["role"] == "assistant":
+                mid = (e.get("dev_notes") or {}).get("message_id")
+                if mid:
+                    if mid in idx_by_mid:
+                        # ersetze die frühere (rohe) Antwort durch diese (formatierte)
+                        out[idx_by_mid[mid]] = e
+                        continue
+                    idx_by_mid[mid] = len(out)
+            out.append(e)
+        return out
     def create_additional_context(self, state: StateSnapshot, content: dict, user: dict) -> str:
         additional_context = {}
         barcode = content.get("barcode", None)

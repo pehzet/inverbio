@@ -24,7 +24,7 @@ from assistant.tools import get_farmely_tools, get_retriever_tool, get_tool
 import json
 from langgraph.types import StateSnapshot
 from assistant.image_utils import _encode_image, _decode_image
-from typing import List, Dict, Any, Literal
+from typing import List, Dict, Any, Literal, Optional
 import requests
 import time
 import datetime
@@ -35,6 +35,7 @@ import pytz
 from pydantic import ValidationError
 from assistant.suggestion_utils import _collect_all_suggestions, _make_suggestions_msg_all
 from assistant.prompt_utils import get_prompt_template_with_placeholders
+from assistant.logger import LocalToolLogger
 class Agent:
     def __init__(self, config:AgentConfig = None):
         self.config = config or AgentConfig.as_default()
@@ -453,7 +454,7 @@ class Agent:
         return {
             "structured_response": structured.model_dump(),
             "messages": [ai_msg],
-            "messages_history":  [ai_msg], # typically no HumanMessage here because user had no turn # gpt suggested state.get("messages_history", []) 
+            "messages_history":  [last_ai, ai_msg], # typically no HumanMessage here because user had no turn # gpt suggested state.get("messages_history", []) 
         }
 
     # def create_graph(self) -> CompiledStateGraph:
@@ -582,12 +583,37 @@ class Agent:
 
 
     def get_messages_by_thread_id(self, thread_id: str) -> List[Dict[str, Any]]:
+        # Logger nur zum Lesen
+        logger = getattr(self, "tool_logger", None)
+        if logger is None or not isinstance(logger, LocalToolLogger):
+            logger = LocalToolLogger(write_file=False)
+
+        # --- Helper: Message-ID robust extrahieren ---
+        def _extract_message_id_from_msg(msg: Any) -> Optional[str]:
+            # 1) direkte ID
+            mid = getattr(msg, "id", None)
+            if isinstance(mid, (str, int)) and str(mid).strip():
+                return str(mid)
+
+            # 2) response_metadata.id
+            rm = getattr(msg, "response_metadata", None)
+            if isinstance(rm, dict):
+                x = rm.get("id") or rm.get("message_id")
+                if isinstance(x, (str, int)) and str(x).strip():
+                    return str(x)
+
+            # 3) additional_kwargs.id
+            ak = getattr(msg, "additional_kwargs", None)
+            if isinstance(ak, dict):
+                x = ak.get("id") or ak.get("message_id")
+                if isinstance(x, (str, int)) and str(x).strip():
+                    return str(x)
+
+            return None
 
         graph = self.get_graph()
-
         config = {"configurable": {"thread_id": thread_id}}
         state = graph.get_state(config)
-
 
         messages = state.values.get("messages_history") or state.values.get("messages", [])
         messages_content: List[Dict[str, Any]] = []
@@ -595,65 +621,69 @@ class Agent:
         for msg in messages:
             if isinstance(msg, RemoveMessage) or isinstance(msg, ToolMessage):
                 continue
-            # TEST: Filter out internal messages -> if success merge with if above
-            if msg.additional_kwargs.get("internal"):
-                continue            
+            if getattr(msg, "additional_kwargs", {}).get("internal") and not isinstance(msg, AIMessage):
+                continue
             raw = msg.content
             if not raw:
                 continue
 
-            # Wenn content ein einfacher String ist:
+            # --- Text & Bilder extrahieren (wie gehabt) ---
             if isinstance(raw, str):
-                entry = {
-                    "role": "assistant" if isinstance(msg, AIMessage) else "user",
-                    "content": raw,
-                    "images": None
+                text_content = raw
+                images_b64 = None
+            else:
+                texts: List[str] = []
+                imgs: List[str] = []
+                for part in raw:
+                    if part.get("type") == "text":
+                        t = part.get("text", "").strip()
+                        if t:
+                            texts.append(t)
+                    elif part.get("type") == "image_url":
+                        info = part.get("image_url", {})
+                        url = info.get("url")
+                        prefix = info.get("prefix", "data:image/png;base64")
+                        if not url:
+                            continue
+                        if url.startswith("data:") and ";base64," in url:
+                            data_uri = url
+                        else:
+                            resp = requests.get(url)
+                            resp.raise_for_status()
+                            b64 = _encode_image(resp.content)
+                            data_uri = f"{prefix},{b64}"
+                        imgs.append(data_uri)
+                text_content = (" ".join(texts).strip() or None)
+                images_b64 = imgs if imgs else None
+
+            # --- Tool-Runs per Message-ID korrelieren ---
+            dev_notes = {}
+            if isinstance(msg, AIMessage):
+                message_id = _extract_message_id_from_msg(msg)
+                tools_for_msg = logger.get_tools_by_message_id(message_id) if message_id else []
+                dev_notes = {
+                    "message_id": message_id,
+                    "tool_runs": tools_for_msg,  # Liste von Tool-Run-Summaries
                 }
-                messages_content.append(entry)
-                continue
-
-            # Ansonsten gehen wir davon aus, dass raw eine Liste von Parts ist
-            # (je ein Dict mit type='text' oder type='image_url')
-            texts: List[str] = []
-            imgs: List[str] = []
-
-            for part in raw:
-                ptype = part.get("type")
-                if ptype == "text":
-                    # sammle reinen Text
-                    text = part.get("text", "").strip()
-                    if text:
-                        texts.append(text)
-
-                elif ptype == "image_url":
-                    # strukturiert als {'image_url': {'prefix':..., 'url':...}, 'type':'image_url'}
-                    info = part.get("image_url", {})
-                    url = info.get("url")
-                    prefix = info.get("prefix", "data:image/png;base64")
-                    if not url:
-                        continue
-
-                    # schon Data-URI?
-                    if url.startswith("data:") and ";base64," in url:
-                        data_uri = url
-                    else:
-                        # echtes Bild herunterladen und in Base64 umwandeln
-                        resp = requests.get(url)
-                        resp.raise_for_status()
-                        b64 = _encode_image(resp.content)
-                        # Content-Type aus Prefix extrahieren (z.B. "data:image/png;base64")
-                        data_uri = f"{prefix},{b64}"
-
-                    imgs.append(data_uri)
+                # Optionaler Fallback/Kompatibilität:
+                # falls msg.id ein echter tool-run_id wäre (alt), liefere trotzdem Summary
+                if (not tools_for_msg) and isinstance(message_id, str) and message_id.startswith("run"):
+                    rs = logger.get_run_summary_by_run_id(message_id)
+                    if rs:
+                        dev_notes.setdefault("tool_runs", [])
+                        # vereinheitlichen (Liste)
+                        dev_notes["tool_runs"] = [rs]
 
             entry = {
                 "role": "assistant" if isinstance(msg, AIMessage) else "user",
-                "content": " ".join(texts).strip() or None,
-                "images": imgs if imgs else None
+                "content": text_content,
+                "images": images_b64,
+                "dev_notes": dev_notes,
             }
             messages_content.append(entry)
 
         return messages_content
+
 
     def create_additional_context(self, state: StateSnapshot, content: dict, user: dict) -> str:
         additional_context = {}
@@ -703,11 +733,17 @@ class Agent:
        
         return {"messages": [msg]}
 
-    # def chat(self, msg: str, images: list[str] = None, user_id: str = None, thread_id: str = None) -> Tuple[str, str]:
+    def setup_tool_logger(self, user_id: str, thread_id: str):
+
+        tool_logger = LocalToolLogger(
+            logfile=self.config.get("tool_logfile", "logs/tool_logs.jsonl"),
+            write_file=self.config.get("tool_logfile_write", True),
+            extra_ctx={"thread_id": thread_id, "user_id": user_id},
+        )
+        return tool_logger
+
     @log_execution()
-    def chat(self, content: dict, user:dict=None) -> Tuple[str, str]:
-
-
+    def chat(self, content: dict, user: dict = None):
         user_id = user.get("user_id") if user else None
         thread_id = user.get("thread_id") if user else None
         graph = self.get_graph()
@@ -717,14 +753,29 @@ class Agent:
             thread_id = f"{user_id}-{uuid.uuid4()}"
             self.user_db.add_thread(thread_id, user_id)
 
-        config = {"configurable": {"thread_id": thread_id}}
-  
+        tool_logger = self.setup_tool_logger(user_id, thread_id)
+
+        config = {
+            "configurable": {"thread_id": thread_id},
+            "callbacks": [tool_logger], 
+        }
+
         graph_input = self.create_graph_input(content, user_id)
         result = graph.invoke(graph_input, config)
+
         message = result["messages"][-1]
         response = message.content
         suggestions = (message.additional_kwargs.get("suggestions") or [])
-        return response, suggestions, thread_id
+
+        tool_runs = tool_logger.get_run_summaries()
+
+        tool_logger.reset()
+
+        dev_notes = {
+            "tool_runs": tool_runs
+        }
+    
+        return response, suggestions, thread_id, dev_notes
 
 
 # if __name__ == "__main__":

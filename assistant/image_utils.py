@@ -121,6 +121,8 @@ def create_msg_with_img(
         b64 = _encode_image(raw)
         data_url = _build_data_url(mime, b64)
         content.append(_make_image_content_item(data_url))
+    
+    # text at the end to avoid misleading-bug
     text = {"type": "text", "text": user_query}
     content.append(text)
     return HumanMessage(content=content)

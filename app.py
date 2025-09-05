@@ -147,8 +147,8 @@ def chat():
     raw_barcodes = _get_raw_barcodes_from_content(content)
     content["barcodes"] = raw_barcodes or []
     user = data.get("user", {})
-    response, suggestions, thread_id = agent.chat(content, user)
-    return jsonify(response=response, suggestions=suggestions, thread_id=thread_id), 200
+    response, suggestions, thread_id, dev_notes = agent.chat(content, user)
+    return jsonify(response=response, suggestions=suggestions, thread_id=thread_id, dev_notes=dev_notes), 200
 
 @log_execution()
 @app.route("/messages", methods=["GET", "POST"])

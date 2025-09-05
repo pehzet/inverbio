@@ -167,7 +167,6 @@ def run_product_sql(
     """
     # was parameter before
     format = "records"
-    ic(sql)
     _ensure_single_readonly_statement(sql)
     _ensure_only_allowed_objects(sql, ALLOWED_OBJECTS)
 

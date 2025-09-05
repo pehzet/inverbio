@@ -19,3 +19,4 @@ psycopg[binary]
 pypdf
 pydantic
 tavily-python
+duckdb

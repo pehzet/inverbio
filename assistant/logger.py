@@ -7,8 +7,8 @@ import datetime as dt
 from pathlib import Path
 import json
 from langchain_core.callbacks import BaseCallbackHandler
-
-
+from assistant.utils.tool_out_serializer import serialize_tool_output
+from icecream import ic
 
 def get_assistant_logger(
     name: str = "assistant_logger",
@@ -201,18 +201,20 @@ class LocalToolLogger(BaseCallbackHandler):
         }
         self._runs[run_id] = rec
         self._append_file({"event": "tool_start", **rec})
-
     def on_tool_end(self, output: Any, *, run_id: str, parent_run_id: Optional[str] = None, **kwargs: Any) -> None:
-        # output bewusst ignorieren!
         start = self._starts.pop(run_id, None)
         dur = (time.perf_counter() - start) if start is not None else None
         rec = self._runs.get(run_id)
+        # >>> NEU: Output serialisieren
+        output_ser = serialize_tool_output(output)
         if rec:
             rec["execution_time_s"] = dur
             rec["ts_end"] = _iso_now()
-            # parent_run_id ggf. aktualisieren (falls Framework es erst hier setzt)
             if parent_run_id and not rec.get("parent_run_id"):
                 rec["parent_run_id"] = _to_str_safe(parent_run_id)
+            # Output in Memory mitführen (optional)
+            rec["output"] = output_ser  # <<—— hier hängt jetzt alles jsonable dran
+
             self._append_file({
                 "event": "tool_end",
                 "run_id": rec["run_id"],
@@ -222,6 +224,13 @@ class LocalToolLogger(BaseCallbackHandler):
                 "ts_end": rec["ts_end"],
                 "user_id": rec.get("user_id"),
                 "thread_id": rec.get("thread_id"),
+                # >>> NEU: Ausgabefelder
+                "output_text": output_ser.get("text"),
+                "output_json": output_ser.get("json"),
+                "output_kind": output_ser.get("kind"),
+                # Wenn du ALLES im File haben willst (inkl. Bilder etc.):
+                # Achtung: kann groß werden.
+                # "output_full": output_ser,
             })
 
     def on_tool_error(self, error: BaseException, *, run_id: str, parent_run_id: Optional[str] = None, **kwargs: Any) -> None:
@@ -373,6 +382,7 @@ class LocalToolLogger(BaseCallbackHandler):
                 "parent_run_id": _to_str_safe(r.get("parent_run_id")),
                 "tool_name": _to_str_safe(r.get("tool_name")),
                 "input": _to_str_safe(r.get("input")),
+                "output": r.get("output"),#_to_str_safe(r.get("output")),
                 "execution_time_s": float(r["execution_time_s"]) if r.get("execution_time_s") is not None else None,
                 "ts_start": _to_str_safe(r.get("ts_start")),
                 "ts_end": _to_str_safe(r.get("ts_end")),
@@ -432,6 +442,7 @@ class LocalToolLogger(BaseCallbackHandler):
                     "parent_run_id": rec.get("parent_run_id"),
                     "tool_name": rec.get("tool_name"),
                     "input": rec.get("input"),
+                    "output": rec.get("output"),
                     "execution_time_s": rec.get("execution_time_s"),
                     "ts_start": rec.get("ts_start"),
                     "ts_end": rec.get("ts_end"),
@@ -473,6 +484,7 @@ class LocalToolLogger(BaseCallbackHandler):
                 "parent_run_id": _to_str_safe(r.get("parent_run_id")),
                 "tool_name": _to_str_safe(r.get("tool_name")),
                 "input": _to_str_safe(r.get("input")),
+                "output": r.get("output"),#_to_str_safe(r.get("output")),
                 "execution_time_s": float(r["execution_time_s"]) if r.get("execution_time_s") is not None else None,
                 "ts_start": _to_str_safe(r.get("ts_start")),
                 "ts_end": _to_str_safe(r.get("ts_end")),
@@ -491,6 +503,7 @@ class LocalToolLogger(BaseCallbackHandler):
             "parent_run_id": _to_str_safe(r.get("parent_run_id")),
             "tool_name": _to_str_safe(r.get("tool_name")),
             "input": _to_str_safe(r.get("input")),
+            "output": r.get("output"),#_to_str_safe(r.get("output")),
             "execution_time_s": float(r["execution_time_s"]) if r.get("execution_time_s") is not None else None,
             "ts_start": _to_str_safe(r.get("ts_start")),
             "ts_end": _to_str_safe(r.get("ts_end")),
@@ -523,6 +536,7 @@ class LocalToolLogger(BaseCallbackHandler):
             "parent_run_id": _to_str_safe(rec.get("parent_run_id")),
             "tool_name": _to_str_safe(rec.get("tool_name")),
             "input": _to_str_safe(rec.get("input")),
+            "output": rec.get("output"),#_to_str_safe(rec.get("output")),
             "execution_time_s": float(rec["execution_time_s"]) if rec.get("execution_time_s") is not None else None,
             "ts_start": _to_str_safe(rec.get("ts_start")),
             "ts_end": _to_str_safe(rec.get("ts_end")),
@@ -530,6 +544,7 @@ class LocalToolLogger(BaseCallbackHandler):
             "thread_id": _to_str_safe(rec.get("thread_id")),
             "message_ids": mids,
         }
+
         return enriched
 
     # -------- In-Memory Summaries (für laufende Session) --------
@@ -542,12 +557,14 @@ class LocalToolLogger(BaseCallbackHandler):
                 "parent_run_id": _to_str_safe(r.get("parent_run_id")),
                 "tool_name": _to_str_safe(r.get("tool_name")),
                 "input": _to_str_safe(r.get("input")),
+                "output": r.get("output"),#_to_str_safe(r.get("output")),
                 "execution_time_s": float(r["execution_time_s"]) if r.get("execution_time_s") is not None else None,
                 "ts_start": _to_str_safe(r.get("ts_start")),
                 "ts_end": _to_str_safe(r.get("ts_end")),
                 "user_id": _to_str_safe(r.get("user_id")),
                 "thread_id": _to_str_safe(r.get("thread_id")),
             })
+        ic(out)
         return out
 
     def reset(self) -> None:

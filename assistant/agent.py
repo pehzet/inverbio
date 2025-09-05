@@ -670,23 +670,10 @@ class Agent:
                 "dev_notes": dev_notes,
             }
             messages_content.append(entry)
-        messages_content = self._dedupe_by_message_id(messages_content)
+    
         return messages_content
 
-    def _dedupe_by_message_id(self, entries):
-        out = []
-        idx_by_mid = {}  # message_id -> index in out
-        for e in entries:
-            if e["role"] == "assistant":
-                mid = (e.get("dev_notes") or {}).get("message_id")
-                if mid:
-                    if mid in idx_by_mid:
-                        # ersetze die frühere (rohe) Antwort durch diese (formatierte)
-                        out[idx_by_mid[mid]] = e
-                        continue
-                    idx_by_mid[mid] = len(out)
-            out.append(e)
-        return out
+
     def create_additional_context(self, state: StateSnapshot, content: dict, user: dict) -> str:
         additional_context = {}
         barcode = content.get("barcode", None)
